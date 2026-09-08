@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>unraid-mobile</Name>
+  <Repository>bear0328/unraid-mobile:latest</Repository>
+  <Registry>https://hub.docker.com/r/bear0328/unraid-mobile/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/bear0328/unraid-mobile-compose/issues</Support>
+  <Project>https://github.com/bear0328/unraid-mobile-compose</Project>
+  <Overview>移动设备优化的 unRAID 管理面板(仪表盘/容器/VM/Compose/文件/日志)。&#xD;
+免费版开箱即用,Pro(买断 license)解锁容器详情/Compose/CPU 温度等。&#xD;
+文档: https://github.com/bear0328/unraid-mobile-compose &#xD;
+&#xD;
+注意: 文件管理和系统日志需要先手工创建密码文件(见两个 Password File 配置项描述);
+不需要这两个功能可删除对应配置行。Compose/CPU 温度(Pro)还需在宿主安装 compose-api
+(README「Pro 宿主后端」一节,会改 /boot/config/go,有风险提示)。</Overview>
+  <Category>Tools:Utilities</Category>
+  <!-- 【续 88 2026-08-08】[PORT:x] 按容器端口(Config 的 Target)替换,本模板 Target 是 80 -->
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/templates/unraid-mobile.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/public/icon.svg</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DonateText>喜欢这个项目?购买 Pro 是对开发最直接的支持。</DonateText>
+  <DonateLink>https://github.com/bear0328/unraid-mobile-compose</DonateLink>
+  <Requires/>
+  <Config Name="Web 端口" Target="80" Default="3999" Mode="tcp" Description="访问 http://unRAID-IP:3999" Type="Port" Display="always" Required="true" Mask="false">3999</Config>
+  <Config Name="unRAID 地址" Target="UNRAID_UPSTREAM" Default="http://192.168.1.100:8001" Mode="" Description="你的 unRAID webGui 地址(不带尾部斜杠)。填错全部 API 502" Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.100:8001</Config>
+  <Config Name="时区" Target="TZ" Default="Asia/Shanghai" Mode="" Description="" Type="Variable" Display="advanced-hide" Required="false" Mask="false">Asia/Shanghai</Config>
+  <Config Name="配置目录" Target="/usr/share/nginx/html/config" Default="/mnt/user/appdata/unraid-mobile/config" Mode="rw" Description="只存 serverUrl,建议保留" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/unraid-mobile/config</Config>
+  <Config Name="用户共享" Target="/mnt/user" Default="/mnt/user" Mode="rw" Description="文件管理(Shares)用;不需要可删本行" Type="Path" Display="advanced-hide" Required="false" Mask="false">/mnt/user</Config>
+  <Config Name="缓存盘" Target="/mnt/cache" Default="/mnt/cache" Mode="rw" Description="文件管理(cache 池)用;不需要可删本行" Type="Path" Display="advanced-hide" Required="false" Mask="false">/mnt/cache</Config>
+  <Config Name="WebDAV 密码文件" Target="/etc/nginx/.davpasswd" Default="/mnt/user/appdata/unraid-mobile/nginx/.davpasswd" Mode="ro" Description="先执行: docker run --rm httpd:alpine htpasswd -nbB davuser '你的密码' &gt; /mnt/user/appdata/unraid-mobile/nginx/.davpasswd" Type="Path" Display="advanced-hide" Required="false" Mask="false">/mnt/user/appdata/unraid-mobile/nginx/.davpasswd</Config>
+  <Config Name="宿主日志目录" Target="/mnt/hostlog" Default="/var/log" Mode="ro" Description="Logs 页用;不需要可删本行" Type="Path" Display="advanced-hide" Required="false" Mask="false">/var/log</Config>
+  <Config Name="日志密码文件" Target="/etc/nginx/.logpasswd" Default="/mnt/user/appdata/unraid-mobile/nginx/.logpasswd" Mode="ro" Description="同上,把 davuser 换成 loguser 再生成一个" Type="Path" Display="advanced-hide" Required="false" Mask="false">/mnt/user/appdata/unraid-mobile/nginx/.logpasswd</Config>
+  <Config Name="php-fpm socket" Target="/hostrun/php-fpm.sock" Default="/var/run/php-fpm.sock" Mode="rw" Description="Compose/CPU 温度(Pro)用,还需宿主装 compose-api(见 README 风险说明);不需要可删本行" Type="Path" Display="advanced-hide" Required="false" Mask="false">/var/run/php-fpm.sock</Config>
+</Container>

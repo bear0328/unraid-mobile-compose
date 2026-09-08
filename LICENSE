@@ -1,0 +1,46 @@
+Business Source License 1.1
+
+Licensor:                  bear0328
+Licensed Work:             unraid-mobile
+                           (c) 2026 bear0328
+Additional Use Grant:      个人及家庭自托管用途不受限制 — 你可以为自己的
+                           unRAID 服务器(不限台数)部署、使用、修改本软件。
+Change Date:               每个版本发布之日起 4 年(该版本自 Change Date 起
+                           按 Change License 授权)
+Change License:            MIT License
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work. The
+Licensor may make an Additional Use Grant, above, permitting limited
+production use.
+
+Effective on the Change Date, or the fourth anniversary of the first publicly
+available distribution of a specific version of the Licensed Work under this
+License, whichever comes first, the Licensor hereby grants you rights under
+the terms of the Change License, and the rights granted in the paragraph
+above terminate.
+
+If your use of the Licensed Work does not comply with the requirements
+currently in effect as described in this License, you must purchase a
+commercial license from the Licensor, its affiliates, or its authorized
+resellers, or you must refrain from using the Licensed Work.
+
+For the avoidance of doubt, without a commercial license you may NOT:
+- offer the Licensed Work to third parties as a hosted, managed, or
+  software-as-a-service product;
+- sell, resell, or bundle the Licensed Work (or derivative works) as part of
+  a paid product or service;
+- use the Licensed Work to provide commercial services to third parties.
+
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, express
+or implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose and noninfringement. In no event shall the
+Licensor be liable for any claim, damages or other liability, whether in an
+action of contract, tort or otherwise, arising from, out of or in connection
+with the Licensed Work or the use or other dealings in the Licensed Work.
+
+(本许可为 Business Source License 1.1 标准条款的实例化。
+ 中文说明仅供参考:个人/家庭自托管随意用;禁止转售、禁止做成收费服务;
+ 每个版本发布满 4 年后自动转为 MIT 完全自由许可。)

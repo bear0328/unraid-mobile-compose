@@ -1,0 +1,31 @@
+# 公开发布样例(Docker Hub 镜像)——与 README「完整 docker-compose 示例」保持一致
+# 使用前把 UNRAID_UPSTREAM 改成你的 unRAID webGui 地址(不带尾部斜杠)
+services:
+  unraid-mobile:
+    image: bear0328/unraid-mobile:latest
+    container_name: unraid-mobile
+    restart: unless-stopped
+    ports:
+      - "3999:80"
+    environment:
+      - TZ=Asia/Shanghai
+      # unRAID GraphQL 上游(webGui 地址,端口通常 8001 或直接 80/443)
+      - UNRAID_UPSTREAM=http://192.168.1.100:8001
+    volumes:
+      # 配置持久化(只存 serverUrl)
+      - /mnt/user/appdata/unraid-mobile/config:/usr/share/nginx/html/config
+      # 按需取消注释:
+      # 文件管理(还需 .davpasswd,见 README 对照表)
+      # - /mnt/user:/mnt/user
+      # - /mnt/cache:/mnt/cache
+      # 宿主系统日志(还需 .logpasswd)
+      # - /var/log:/mnt/hostlog:ro
+      # Compose 栈管理(还需宿主装 compose-api,见 README)
+      # - /var/run/php-fpm.sock:/hostrun/php-fpm.sock
+    healthcheck:
+      # 必须 127.0.0.1:alpine 把 localhost 解析到 ::1,nginx 只听 IPv4(见 Dockerfile 注释)
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
