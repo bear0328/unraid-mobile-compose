@@ -59,8 +59,13 @@ const UPDATE_STATUS_FILE = '/var/lib/docker/unraid-update-status.json';
 
 // 【续 118】缓存池文件搜索:只读 SSD cache 池,不碰 /mnt/user、/mnt/disk*(唤盘红线)
 const CACHE_POOL_DIR = '/mnt/cache';
+// 【续 120】全盘搜索:/mnt/user FUSE 联合视图(cache+全部阵列盘),休眠盘会被唤醒。
+// 仅用户显式二次确认后由前端传 scope=all 触发,写 audit 留痕;不碰 /mnt/disk*、/mnt/user0
+const USER_SHARES_DIR = '/mnt/user';
 const SEARCH_MAX_RESULTS = 200;
 const SEARCH_TIMEOUT_SEC = 15;
+// 全盘搜索多盘顺序起转可能耗时 1-2 分钟,timeout 放宽到 120s
+const SEARCH_ALL_TIMEOUT_SEC = 120;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -631,23 +636,29 @@ function runComposeAsync(string $dir, string $op, string $args): void
 // ---------- 路由 ----------
 
 /**
- * 【续 118】缓存池文件名搜索:find /mnt/cache -maxdepth 8 -iname '*q*'
- * 只读 SSD cache 池(常转),不碰 /mnt/user、/mnt/disk* → 阵列休眠盘零接触。
+ * 【续 118/120】文件名搜索:find <root> -maxdepth 8 -iname '*q*'
+ * scope=cache(默认):只读 /mnt/cache SSD 池(常转),阵列休眠盘零接触;
+ * scope=all:扫 /mnt/user FUSE 联合视图,休眠阵列盘会被唤醒(用户显式确认,audit 留痕)。
  * q 先剥用户通配符(防注入/语义混乱)再 escapeshellarg;timeout 防失控;
  * 多取 1 条判 truncated。-printf '%P\t%y':相对路径 + 类型(d=目录)。
- * 返回 ['results' => [['path'=>..., 'isDir'=>bool], ...], 'truncated'=>bool, 'root'=>CACHE_POOL_DIR]
+ * 返回 ['results' => [['path'=>..., 'isDir'=>bool], ...], 'truncated'=>bool, 'root'=><搜索根>, 'scope'=>...]
  */
-function searchCachePool(string $q): array
+function searchFiles(string $q, string $scope = 'cache'): array
 {
+    if ($scope !== 'cache' && $scope !== 'all') {
+        fail(400, '非法 scope(仅支持 cache/all)');
+    }
+    $root = $scope === 'all' ? USER_SHARES_DIR : CACHE_POOL_DIR;
+    $timeout = $scope === 'all' ? SEARCH_ALL_TIMEOUT_SEC : SEARCH_TIMEOUT_SEC;
     $q = str_replace(['*', '?'], '', trim($q));
     if (mb_strlen($q) < 2) {
         fail(400, '关键词至少 2 个字符');
     }
-    if (!is_dir(CACHE_POOL_DIR)) {
-        fail(503, '缓存池不存在: ' . CACHE_POOL_DIR);
+    if (!is_dir($root)) {
+        fail(503, '搜索根不存在: ' . $root);
     }
-    $cmd = PATH_ENV . ' timeout ' . SEARCH_TIMEOUT_SEC
-        . ' find ' . escapeshellarg(CACHE_POOL_DIR)
+    $cmd = PATH_ENV . ' timeout ' . $timeout
+        . ' find ' . escapeshellarg($root)
         . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
         . ' -printf ' . escapeshellarg("%P\t%y\n")
         . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
@@ -668,7 +679,7 @@ function searchCachePool(string $q): array
     if ($truncated) {
         $results = array_slice($results, 0, SEARCH_MAX_RESULTS);
     }
-    return ['results' => $results, 'truncated' => $truncated, 'root' => CACHE_POOL_DIR];
+    return ['results' => $results, 'truncated' => $truncated, 'root' => $root, 'scope' => $scope];
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -695,9 +706,14 @@ if ($method === 'GET') {
         ok(readImageUpdates());
     }
 
-    // 【续 118】缓存池文件搜索(显式触发;只读 /mnt/cache,不唤盘)
+    // 【续 118/120】文件搜索(显式触发):scope=cache 只读 /mnt/cache 不唤盘;
+    // scope=all 扫 /mnt/user 唤醒休眠盘(前端二次确认),audit 留痕
     if ($action === 'search') {
-        ok(searchCachePool((string) ($_GET['q'] ?? '')));
+        $scope = (string) ($_GET['scope'] ?? 'cache');
+        if ($scope === 'all') {
+            audit('search-all', mb_substr((string) ($_GET['q'] ?? ''), 0, 64), 'ok');
+        }
+        ok(searchFiles((string) ($_GET['q'] ?? ''), $scope));
     }
 
     if ($action === 'list') {
