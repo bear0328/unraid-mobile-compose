@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.5] - 2026-09-18
+
+### Added
+
+- Global search (Cmd+K) now covers VMs, root shares and Compose stacks (read from existing caches only — never triggers new requests), with grouped results, recent-search history, and fuzzy matching with English/pinyin aliases (e.g. `docker` finds 容器/VM, `rz` finds 日志)
+- Cache-pool file search: an explicit "search files on cache pool" action in global search calls the new compose-api `?action=search` endpoint (host-side `find` over `/mnt/cache` only — array disks are never touched and sleeping disks are never woken). Results deep-link into the Shares page. Requires updating compose-api on the host (install script updated; old backends show an upgrade hint)
+- Containers page: in-page search box filtering Docker containers (name/image/state), VMs and Compose stacks with one input
+- iOS app shell via Capacitor 8 (`ios/` in-repo; native mode prefixes all API paths with the active server URL, web behavior unchanged). Simulator smoke passed; device signing is a manual user step
+
 ## [1.2.4] - 2026-08-23
 
 ### Fixed

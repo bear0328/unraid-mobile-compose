@@ -57,6 +57,11 @@ const AUDIT_MAX_BYTES = 1048576;
 // 【续 112】unraid-api 的容器更新状态缓存(webGui dockerupdate cron / DockerUpdate.php 写)
 const UPDATE_STATUS_FILE = '/var/lib/docker/unraid-update-status.json';
 
+// 【续 118】缓存池文件搜索:只读 SSD cache 池,不碰 /mnt/user、/mnt/disk*(唤盘红线)
+const CACHE_POOL_DIR = '/mnt/cache';
+const SEARCH_MAX_RESULTS = 200;
+const SEARCH_TIMEOUT_SEC = 15;
+
 header('Content-Type: application/json; charset=utf-8');
 
 // 【续 113】JSON_INVALID_UTF8_SUBSTITUTE:compose 日志含 ANSI/Braille 进度符,
@@ -625,6 +630,47 @@ function runComposeAsync(string $dir, string $op, string $args): void
 
 // ---------- 路由 ----------
 
+/**
+ * 【续 118】缓存池文件名搜索:find /mnt/cache -maxdepth 8 -iname '*q*'
+ * 只读 SSD cache 池(常转),不碰 /mnt/user、/mnt/disk* → 阵列休眠盘零接触。
+ * q 先剥用户通配符(防注入/语义混乱)再 escapeshellarg;timeout 防失控;
+ * 多取 1 条判 truncated。-printf '%P\t%y':相对路径 + 类型(d=目录)。
+ * 返回 ['results' => [['path'=>..., 'isDir'=>bool], ...], 'truncated'=>bool, 'root'=>CACHE_POOL_DIR]
+ */
+function searchCachePool(string $q): array
+{
+    $q = str_replace(['*', '?'], '', trim($q));
+    if (mb_strlen($q) < 2) {
+        fail(400, '关键词至少 2 个字符');
+    }
+    if (!is_dir(CACHE_POOL_DIR)) {
+        fail(503, '缓存池不存在: ' . CACHE_POOL_DIR);
+    }
+    $cmd = PATH_ENV . ' timeout ' . SEARCH_TIMEOUT_SEC
+        . ' find ' . escapeshellarg(CACHE_POOL_DIR)
+        . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+        . ' -printf ' . escapeshellarg("%P\t%y\n")
+        . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
+    $out = (string) @shell_exec($cmd);
+    $results = [];
+    foreach (explode("\n", trim($out)) as $line) {
+        if ($line === '') {
+            continue;
+        }
+        $parts = explode("\t", $line);
+        $path = $parts[0] ?? '';
+        if ($path === '' || $path === '.') {
+            continue;
+        }
+        $results[] = ['path' => $path, 'isDir' => ($parts[1] ?? '') === 'd'];
+    }
+    $truncated = count($results) > SEARCH_MAX_RESULTS;
+    if ($truncated) {
+        $results = array_slice($results, 0, SEARCH_MAX_RESULTS);
+    }
+    return ['results' => $results, 'truncated' => $truncated, 'root' => CACHE_POOL_DIR];
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
@@ -647,6 +693,11 @@ if ($method === 'GET') {
     // 【续 112】有更新的镜像 ref 列表(直读更新缓存,剥 library/ 前缀;纯文件读,不唤盘)
     if ($action === 'updates') {
         ok(readImageUpdates());
+    }
+
+    // 【续 118】缓存池文件搜索(显式触发;只读 /mnt/cache,不唤盘)
+    if ($action === 'search') {
+        ok(searchCachePool((string) ($_GET['q'] ?? '')));
     }
 
     if ($action === 'list') {

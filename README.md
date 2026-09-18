@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.4/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.4/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,13 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.2.5 (2026-09-18)
+
+- Global search (Cmd+K) now covers VMs, root shares and Compose stacks (cache-only reads, no new requests), with grouped results, recent-search history and fuzzy matching (English/pinyin aliases)
+- New compose-api `?action=search&q=` endpoint: host-side file-name search over `/mnt/cache` only (array disks untouched, sleeping disks never woken); powers the explicit "search files on cache pool" action in global search. **Requires updating compose-api on the host** (install script updated; old backends show an upgrade hint)
+- Containers page: one in-page search box filters Docker containers (name/image/state), VMs and Compose stacks
+- iOS app shell via Capacitor 8 (web behavior unchanged)
 
 ### v1.2.4 (2026-08-23)
 
