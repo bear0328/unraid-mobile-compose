@@ -26,10 +26,10 @@
 # api.php 来源: 优先用与本脚本同目录的 api.php;否则从 RAW_URL 下载。
 set -euo pipefail
 
-# 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.4/compose-api/api.php"
+# 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="6ff284fb0932a86f36751d679ca0de21c3c3086c5b59675baf7f6ae903f5cb15"
+EXPECTED_API_SHA256="182da5fc9f328989a53f45fc25dc566707714ecac3d9a8668e5cab1e95d5ee39"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"
 EXEC_DIR="/usr/local/emhttp/plugins/compose.manager"

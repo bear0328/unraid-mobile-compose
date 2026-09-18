@@ -152,9 +152,9 @@ Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.4/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.4/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -185,6 +185,13 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.2.5(2026-09-18)
+
+- 全局搜索(Cmd+K)扩展:VM、根分享、Compose 栈(只读缓存,零新请求)+ 分组结果 + 最近搜索 + 英文/拼音别名模糊匹配
+- compose-api 新增 `?action=search&q=` 端点:宿主侧文件名搜索,仅扫 `/mnt/cache`(不碰阵列盘、不唤醒休眠盘);支撑全局搜索里显式触发的「在缓存盘文件中搜索」。**需在宿主更新 compose-api**(安装脚本已更新;旧版后端会提示升级)
+- 容器管理页新增页内搜索框:一个输入框同时过滤 Docker 容器(名称/镜像/状态)、虚拟机、Compose 栈
+- iOS App 套壳(Capacitor 8,Web 端行为零变化)
 
 ### v1.2.4(2026-08-23)
 
