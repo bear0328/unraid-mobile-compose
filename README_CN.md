@@ -152,9 +152,9 @@ Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -185,6 +185,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.2.7(2026-09-19)
+
+- 全盘文件索引(Pro):cron 每日定时把 `/mnt/user` 文件名索引构建到 cache 池,文件搜索直读索引——毫秒出结果、零唤盘;设置页新增卡片(开关/整点/手动重建)。文件搜索收敛单入口(Pro 走索引,免费保留实时全盘)。修复 cache-only 软链份额(`strm`、`appdata` 等)被索引/全盘搜索漏掉的问题。需在宿主更新 compose-api
 
 ### v1.2.6(2026-09-18)
 

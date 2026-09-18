@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.2.7 (2026-09-19)
+
+- Full-disk file index (Pro): daily cron build of a `/mnt/user` filename index into the cache pool — file search reads the index, millisecond results with zero disk spin-up; new Settings card with toggle, build-hour picker and manual rebuild. File search is now a single entry (Pro → index, free → v1.2.6 real-time full-disk search). Fixes cache-only symlink shares (`strm`, `appdata`, …) being skipped by index/full-disk search. Requires updating compose-api on the host
 
 ### v1.2.6 (2026-09-18)
 

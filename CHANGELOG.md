@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.7] - 2026-09-19
+
+### Added
+
+- Full-disk file index (Pro): the host builds a filename index of `/mnt/user` once a day (cron, default 03:00) into the cache pool; searching files in global search reads the index — millisecond results with zero disk spin-up. New "Full-disk file index" card in Settings: on/off toggle, daily build hour picker (on the hour, 0-23), index stats (entries / size / built-at) and a manual rebuild button. Requires updating compose-api on the host (install script ships `update-file-index.sh` + `register-index-cron.sh`; old backends show an upgrade hint)
+
+### Changed
+
+- Global search file search is now a single entry: Pro users search the index directly (no spin-up); free users keep the v1.2.6 real-time full-disk search (with the spin-up confirmation) and see an unlock hint. The "cache pool only" search tier is removed from the UI (backend `scope=cache` kept for v1.2.6 compatibility)
+- Full-disk file index is a Pro feature (Settings card and index search are gated)
+
+### Fixed
+
+- Cache-only shares that appear as symlinks under `/mnt/user` (e.g. `strm`, `appdata`, `isos`) were silently skipped by both the index build and the real-time full-disk search — `find` does not follow symlinks by default. Both now follow top-level share symlinks explicitly
+
 ## [1.2.6] - 2026-09-18
 
 ### Added

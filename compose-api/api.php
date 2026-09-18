@@ -66,6 +66,18 @@ const SEARCH_MAX_RESULTS = 200;
 const SEARCH_TIMEOUT_SEC = 15;
 // 全盘搜索多盘顺序起转可能耗时 1-2 分钟,timeout 放宽到 120s
 const SEARCH_ALL_TIMEOUT_SEC = 120;
+// 【续 123】全盘文件名索引:cron 低峰(或 PUT reindex 显式)跑 update-file-index.sh
+// 扫 /mnt/user 落到 prod appdata 目录(物理在 cache 池)的 TSV;scope=index 搜索只
+// grep 该文件(SSD 常转),阵列休眠盘零接触。索引构建本身唤盘,故只允许计划任务/显式触发
+const INDEX_FILE = '/mnt/cache/appdata/unraid-mobile/file-index.tsv';
+const INDEX_BUILDER = '/boot/config/plugins/unraid-mobile/update-file-index.sh';
+// 【续 124】索引功能开关:flag 文件存在=启用(设置页 PUT indexcfg 控制);
+// 关闭时 scope=index 拒绝服务,cron 注册(go 钩子)也以此 flag 为条件
+const INDEX_ENABLED_FLAG = '/boot/config/plugins/unraid-mobile/index-enabled';
+// 【续 125】定时索引整点(0-23,缺省 3),设置页可配
+const INDEX_HOUR_FILE = '/boot/config/plugins/unraid-mobile/index-hour';
+// cron 注册/摘除脚本(读 flag + hour;install 脚本安装,go 钩子重启也调它)
+const INDEX_CRON_REGISTER = '/boot/config/plugins/unraid-mobile/register-index-cron.sh';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -636,33 +648,89 @@ function runComposeAsync(string $dir, string $op, string $args): void
 // ---------- 路由 ----------
 
 /**
- * 【续 118/120】文件名搜索:find <root> -maxdepth 8 -iname '*q*'
- * scope=cache(默认):只读 /mnt/cache SSD 池(常转),阵列休眠盘零接触;
- * scope=all:扫 /mnt/user FUSE 联合视图,休眠阵列盘会被唤醒(用户显式确认,audit 留痕)。
- * q 先剥用户通配符(防注入/语义混乱)再 escapeshellarg;timeout 防失控;
- * 多取 1 条判 truncated。-printf '%P\t%y':相对路径 + 类型(d=目录)。
- * 返回 ['results' => [['path'=>..., 'isDir'=>bool], ...], 'truncated'=>bool, 'root'=><搜索根>, 'scope'=>...]
+ * 【续 118/120/123】文件名搜索,三个 scope:
+ * cache(默认):find /mnt/cache,只读 SSD 池,阵列休眠盘零接触;
+ * all:find /mnt/user FUSE 联合视图,休眠盘会被唤醒(用户显式二次确认,audit 留痕);
+ * index:grep 预建索引文件(INDEX_FILE,在 cache 上),覆盖全盘但零唤盘,
+ *       结果新鲜度取决于索引构建时间(返回 indexTime 供前端展示)。
+ * q 剥通配符/控制符后 escapeshellarg;timeout 防失控;多取 1 条判 truncated。
+ * 索引/全盘行格式 '%P\t%y':相对 /mnt/user 路径 + 类型(d=目录),与前端深链约定一致。
  */
 function searchFiles(string $q, string $scope = 'cache'): array
 {
-    if ($scope !== 'cache' && $scope !== 'all') {
-        fail(400, '非法 scope(仅支持 cache/all)');
+    if ($scope !== 'cache' && $scope !== 'all' && $scope !== 'index') {
+        fail(400, '非法 scope(仅支持 cache/index/all)');
     }
-    $root = $scope === 'all' ? USER_SHARES_DIR : CACHE_POOL_DIR;
-    $timeout = $scope === 'all' ? SEARCH_ALL_TIMEOUT_SEC : SEARCH_TIMEOUT_SEC;
-    $q = str_replace(['*', '?'], '', trim($q));
+    $q = str_replace(['*', '?', "\t", "\n", "\r"], '', trim($q));
     if (mb_strlen($q) < 2) {
         fail(400, '关键词至少 2 个字符');
     }
+
+    if ($scope === 'index') {
+        if (!is_file(INDEX_ENABLED_FLAG)) {
+            fail(400, '索引功能已在设置中关闭');
+        }
+        if (!is_file(INDEX_FILE)) {
+            fail(503, '索引不存在,请先重建索引');
+        }
+        $indexTime = (int) filemtime(INDEX_FILE);
+        // -iF 定串忽略大小写;-e 防关键词以 - 开头被当选项
+        $cmd = PATH_ENV . ' grep -iF -e ' . escapeshellarg($q)
+            . ' ' . escapeshellarg(INDEX_FILE)
+            . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
+        $out = (string) @shell_exec($cmd);
+        [$results, $truncated] = parseSearchLines($out);
+        return [
+            'results' => $results,
+            'truncated' => $truncated,
+            'root' => USER_SHARES_DIR,
+            'scope' => $scope,
+            'indexTime' => $indexTime,
+        ];
+    }
+
+    $root = $scope === 'all' ? USER_SHARES_DIR : CACHE_POOL_DIR;
+    $timeout = $scope === 'all' ? SEARCH_ALL_TIMEOUT_SEC : SEARCH_TIMEOUT_SEC;
     if (!is_dir($root)) {
         fail(503, '搜索根不存在: ' . $root);
     }
-    $cmd = PATH_ENV . ' timeout ' . $timeout
-        . ' find ' . escapeshellarg($root)
-        . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
-        . ' -printf ' . escapeshellarg("%P\t%y\n")
-        . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
+    if ($scope === 'all') {
+        // 【续 124 修复】顶层软链份额(strm/appdata/isos 等 cache-only 份额在 /mnt/user 里是
+        // -> ../cache/* 的软链),find 默认不跟随会整树漏掉;每个顶层软链单独一次 find -H
+        // 跟随(只跟这层,不跟深层内层软链,防逃逸/环路);%p 打全路径再 sed 剥前缀
+        $symlinkFinds = '';
+        foreach (scandir($root) ?: [] as $e) {
+            if ($e === '.' || $e === '..') {
+                continue;
+            }
+            $p = $root . '/' . $e;
+            if (is_link($p)) {
+                $symlinkFinds .= '; timeout ' . $timeout . ' find -H ' . escapeshellarg($p)
+                    . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+                    . ' -printf ' . escapeshellarg("%p\t%y\n") . ' 2>/dev/null';
+            }
+        }
+        $cmd = PATH_ENV . ' sh -c ' . escapeshellarg(
+            '{ timeout ' . $timeout . ' find ' . escapeshellarg($root)
+            . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -printf ' . escapeshellarg("%p\t%y\n") . ' 2>/dev/null'
+            . $symlinkFinds . '; } | sed ' . escapeshellarg('s|^' . $root . '/\?||')
+        ) . ' | head -n ' . (SEARCH_MAX_RESULTS + 1);
+    } else {
+        $cmd = PATH_ENV . ' timeout ' . $timeout
+            . ' find ' . escapeshellarg($root)
+            . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -printf ' . escapeshellarg("%P\t%y\n")
+            . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
+    }
     $out = (string) @shell_exec($cmd);
+    [$results, $truncated] = parseSearchLines($out);
+    return ['results' => $results, 'truncated' => $truncated, 'root' => $root, 'scope' => $scope];
+}
+
+/** 解析 '%P\t%y' 行 → results 数组 + truncated 标记(多取 1 条判截断) */
+function parseSearchLines(string $out): array
+{
     $results = [];
     foreach (explode("\n", trim($out)) as $line) {
         if ($line === '') {
@@ -679,7 +747,105 @@ function searchFiles(string $q, string $scope = 'cache'): array
     if ($truncated) {
         $results = array_slice($results, 0, SEARCH_MAX_RESULTS);
     }
-    return ['results' => $results, 'truncated' => $truncated, 'root' => $root, 'scope' => $scope];
+    return [$results, $truncated];
+}
+
+/**
+ * 【续 124】索引状态(设置页卡片用):开关/有无索引/构建时间/条数/大小。
+ * 条数与大小读 builder 写的 sidecar .meta(不扫 142MB 主文件);meta 缺失回退 filesize。
+ */
+function indexStatus(): array
+{
+    $meta = [];
+    $metaFile = INDEX_FILE . '.meta';
+    if (is_file($metaFile)) {
+        $decoded = json_decode((string) @file_get_contents($metaFile), true);
+        if (is_array($decoded)) {
+            $meta = $decoded;
+        }
+    }
+    return [
+        'enabled' => is_file(INDEX_ENABLED_FLAG),
+        'hasIndex' => is_file(INDEX_FILE),
+        'indexTime' => isset($meta['builtAt']) ? (int) $meta['builtAt']
+            : (is_file(INDEX_FILE) ? (int) filemtime(INDEX_FILE) : null),
+        'entries' => isset($meta['entries']) ? (int) $meta['entries'] : null,
+        'sizeBytes' => is_file(INDEX_FILE) ? (int) filesize(INDEX_FILE) : null,
+        'building' => is_file(dirname(INDEX_FILE) . '/.index-building'),
+        'hour' => indexHour(),
+    ];
+}
+
+/** 【续 125】读定时索引整点(0-23,缺省 3;文件缺失/非法值回退 3) */
+function indexHour(): int
+{
+    if (is_file(INDEX_HOUR_FILE)) {
+        $h = trim((string) @file_get_contents(INDEX_HOUR_FILE));
+        if (preg_match('/^\d{1,2}$/', $h) && (int) $h <= 23) {
+            return (int) $h;
+        }
+    }
+    return 3;
+}
+
+/** 注册/摘除索引 cron:优先调 register 脚本(install 脚本/go 钩子共用同一份逻辑);脚本缺失(旧安装)内联兜底 */
+function refreshIndexCron(): void
+{
+    if (is_file(INDEX_CRON_REGISTER)) {
+        @shell_exec(PATH_ENV . ' sh ' . escapeshellarg(INDEX_CRON_REGISTER) . ' >/dev/null 2>&1');
+        return;
+    }
+    if (is_file(INDEX_ENABLED_FLAG)) {
+        $line = '0 ' . indexHour() . ' * * * ' . INDEX_BUILDER . ' # unraid-mobile 文件索引';
+        $cmd = '(crontab -l 2>/dev/null | grep -v "update-file-index\\.sh"; echo '
+            . escapeshellarg($line) . ') | crontab -';
+    } else {
+        $cmd = 'crontab -l 2>/dev/null | grep -v "update-file-index\\.sh" | crontab -';
+    }
+    @shell_exec(PATH_ENV . ' sh -c ' . escapeshellarg($cmd));
+}
+
+/** 【续 124/125】索引配置:enabled 开关(写/删 flag)+ hour 定时整点(0-23);改完统一刷新 cron;enable 且无索引时后台补建 */
+function setIndexConfig(array $body): array
+{
+    $hasEnabled = array_key_exists('enabled', $body);
+    $hasHour = array_key_exists('hour', $body);
+    if (!$hasEnabled && !$hasHour) {
+        fail(400, 'enabled/hour 至少传一个');
+    }
+    $enabled = null;
+    if ($hasEnabled) {
+        $enabled = (string) $body['enabled'];
+        if ($enabled !== 'true' && $enabled !== 'false') {
+            fail(400, 'enabled 必须是 "true" 或 "false"');
+        }
+        if ($enabled === 'true') {
+            if (@file_put_contents(INDEX_ENABLED_FLAG, date('c')) === false) {
+                fail(500, 'flag 写入失败');
+            }
+        } else {
+            @unlink(INDEX_ENABLED_FLAG);
+        }
+    }
+    $hour = null;
+    if ($hasHour) {
+        $raw = (string) $body['hour'];
+        if (!preg_match('/^\d{1,2}$/', $raw) || (int) $raw > 23) {
+            fail(400, 'hour 必须是 0-23 的整数');
+        }
+        $hour = (int) $raw;
+        if (@file_put_contents(INDEX_HOUR_FILE, (string) $hour) === false) {
+            fail(500, 'hour 写入失败');
+        }
+    }
+    refreshIndexCron();
+    // 启用时还没有索引 → 后台补建一次(会唤盘,audit 在 reindex 语义里已覆盖)
+    if ($enabled === 'true' && !is_file(INDEX_FILE) && is_file(INDEX_BUILDER)) {
+        exec(PATH_ENV . ' nohup sh ' . escapeshellarg(INDEX_BUILDER) . ' > /dev/null 2>&1 &');
+    }
+    $detail = trim(($enabled !== null ? "enabled=$enabled " : '') . ($hour !== null ? "hour=$hour" : ''));
+    audit('indexcfg', $detail, 'ok');
+    return indexStatus();
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -714,6 +880,11 @@ if ($method === 'GET') {
             audit('search-all', mb_substr((string) ($_GET['q'] ?? ''), 0, 64), 'ok');
         }
         ok(searchFiles((string) ($_GET['q'] ?? ''), $scope));
+    }
+
+    // 【续 124】索引状态(设置页卡片;只读 flag/meta/文件大小,不唤盘)
+    if ($action === 'indexstatus') {
+        ok(indexStatus());
     }
 
     if ($action === 'list') {
@@ -786,6 +957,21 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         }
         audit('autostart', $name, 'ok');
         ok(['autostart' => $value === 'true']);
+    }
+
+    // 【续 124/125】索引配置(设置页;enabled 开关 / hour 定时整点,audit 留痕)
+    if ($action === 'indexcfg') {
+        ok(setIndexConfig($body));
+    }
+
+    // 【续 123】重建全盘文件索引(后台跑,find /mnt/user 会唤盘 → 显式触发 + audit 留痕)
+    if ($action === 'reindex') {
+        if (!is_file(INDEX_BUILDER)) {
+            fail(503, '索引构建脚本未安装: ' . INDEX_BUILDER . '(重跑 install-compose-api.sh)');
+        }
+        exec(PATH_ENV . ' nohup sh ' . escapeshellarg(INDEX_BUILDER) . ' > /dev/null 2>&1 &');
+        audit('reindex', '-', 'ok');
+        ok(['async' => true]);
     }
 
     // 固定子命令白名单,参数不外传(无注入面)
