@@ -10,7 +10,7 @@
 # ⚠️ 风险说明(续 57,运行前必读):
 #   本脚本会修改 unRAID 开机脚本 /boot/config/go —— 它是系统启动时执行的核心
 #   脚本,改错可能导致开机异常。保障措施:修改前自动备份为 go.unraid-mobile-bak,
-#   追加内容仅 6 行(带【unraid-mobile】标记),卸载时按标记删除即可恢复。
+#   追加内容仅数行(带【unraid-mobile】标记),卸载时按标记删除即可恢复。
 #   脚本执行时会要求输入 YES 确认知悉此风险(-y 跳过)。
 #
 # 它做什么:
@@ -27,9 +27,9 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="c7ed5605df4695fd04e76311dadf35e9c3b49061c825bd438cd216c7f4368c2c"
+EXPECTED_API_SHA256="e1ea9ffaeaacf849b5dedbbb33ff9549b7e9ff8d8224202fd749dc94fa314b05"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"
 EXEC_DIR="/usr/local/emhttp/plugins/compose.manager"
@@ -58,8 +58,8 @@ if [ "$ASSUME_YES" != "1" ]; then
 本脚本会修改 unRAID 开机脚本 /boot/config/go(系统启动核心脚本),
 用于重启后恢复 compose-api。保障措施:
   · 修改前自动备份为 /boot/config/go.unraid-mobile-bak
-  · 仅追加 6 行(带【unraid-mobile】标记),不改动你已有的任何行
-  · 卸载: 删除 /boot/config/plugins/unraid-mobile/ 及 go 里标记的 6 行即可完全还原
+  · 仅追加数行(带【unraid-mobile】标记),不改动你已有的任何行
+  · 卸载: 删除 /boot/config/plugins/unraid-mobile/ 及 go 里标记的行即可完全还原
 EOF
     read -r -p "已知晓上述风险,确认继续? 输入 YES 继续,其他任意输入中止: " CONFIRM
     [ "$CONFIRM" = "YES" ] || die "用户未确认,已中止(未做任何修改)"
@@ -119,15 +119,46 @@ if [ -f "$PLUGIN_DIR/update-status.php" ]; then
     info "update-status.php: 正本 $PLUGIN_DIR/update-status.php → 执行位置 $EXEC_DIR/update-status.php"
 fi
 
+# ---------- 3.6 装 update-file-index.sh + register-index-cron.sh(续 123-125:全盘文件名索引,搜索不唤盘) ----------
+# 老版本发布物里没有这两个文件,下载失败只警告不中止(索引搜索不可用,其余功能正常)
+for f in update-file-index.sh register-index-cron.sh; do
+    if [ -f "$SCRIPT_DIR/$f" ]; then
+        cp "$SCRIPT_DIR/$f" "$PLUGIN_DIR/$f"
+        info "$f 来自脚本同目录"
+    else
+        if curl -fsSL "${RAW_URL%/*}/$f" -o "$PLUGIN_DIR/$f"; then
+            info "$f 下载自 ${RAW_URL%/*}/$f"
+        else
+            rm -f "$PLUGIN_DIR/$f"
+            echo "[install] 警告: $f 下载失败(${RAW_URL%/*}/$f),索引搜索不可用,其余功能正常"
+        fi
+    fi
+    [ -f "$PLUGIN_DIR/$f" ] && chmod +x "$PLUGIN_DIR/$f"
+done
+if [ -f "$PLUGIN_DIR/update-file-index.sh" ]; then
+    # 【续 124】索引开关 flag:安装默认开启(设置页可关;关闭后重装会重新打开)
+    touch "$PLUGIN_DIR/index-enabled"
+    # 【续 125】本机立即注册 cron(不必等重启走 go 钩子);整点读 index-hour(缺省凌晨 3 点)
+    if [ -f "$PLUGIN_DIR/register-index-cron.sh" ]; then
+        sh "$PLUGIN_DIR/register-index-cron.sh" || true
+    else
+        (crontab -l 2>/dev/null | grep -v 'update-file-index\.sh'; echo '0 3 * * * /boot/config/plugins/unraid-mobile/update-file-index.sh # unraid-mobile 文件索引') | crontab - 2>/dev/null || true
+    fi
+    info "update-file-index.sh: $PLUGIN_DIR/(cron 每天整点构建,缺省 03:00,设置页可改;App 内也可手动重建;设置页可开关)"
+fi
+
 # ---------- 4. go 钩子(幂等:先清旧行再追加) ----------
 # 清掉历史版本钩子行(续 47/49 旧布局 + 本脚本以往安装)
 # 【续 88 2026-08-08】.op-running 清理行也纳入模式删除,否则重复安装会累积
+# 【续 123】crontab 注册行也纳入(/var/spool/cron 是 tmpfs,重启丢 → go 里重新注册)
 sed -i.unraid-mobile-bak \
     -e '/【unraid-mobile/d' \
     -e '/tmpfs,重启后 api\.php 丢失/d' \
     -e '/compose\.manager\/api\.php/d' \
     -e '/compose\.manager\/update-status\.php/d' \
     -e '/\.op-running/d' \
+    -e '/update-file-index\.sh/d' \
+    -e '/register-index-cron\.sh/d' \
     "$GO_FILE"
 cat >> "$GO_FILE" << 'EOF'
 # 【unraid-mobile】compose-api 恢复钩子(install-compose-api.sh 安装)
@@ -136,6 +167,8 @@ cp /boot/config/plugins/unraid-mobile/api.php /usr/local/emhttp/plugins/compose.
 cp /boot/config/plugins/unraid-mobile/update-status.php /usr/local/emhttp/plugins/compose.manager/update-status.php 2>/dev/null || true
 # 清 .op-running 残留锁(续 88 2026-08-08):projects 在 flash 盘持久,宿主重启/进程被杀后残留会让该栈永久 409
 rm -f /boot/config/plugins/compose.manager/projects/*/.op-running
+# 【unraid-mobile】文件索引 cron(续 123-125):/var/spool/cron 是 tmpfs,重启重注册;脚本内以 index-enabled flag 为条件、读 index-hour 整点(设置页可配)
+/boot/config/plugins/unraid-mobile/register-index-cron.sh >/dev/null 2>&1 || true
 EOF
 info "go 钩子已更新(旧备份: $GO_FILE.unraid-mobile-bak)"
 
@@ -151,5 +184,8 @@ cat << 'EOF'
 go 文件备份: /boot/config/go.unraid-mobile-bak(如需还原直接覆盖回去)
 卸载: 删掉 /boot/config/plugins/unraid-mobile/、
       /usr/local/emhttp/plugins/compose.manager/api.php 和 update-status.php、
-      以及 /boot/config/go 里【unraid-mobile】标记的六行。
+      /boot/config/go 里【unraid-mobile】标记的行、
+      以及 crontab 里 update-file-index.sh 那行(crontab -l 查看)。
+索引: 每天 03:17 自动构建全盘文件名索引(会唤盘,故排凌晨低峰);
+      App 全局搜索里也可手动「重建索引」。
 EOF
