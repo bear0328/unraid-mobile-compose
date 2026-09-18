@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.6] - 2026-09-18
+
+### Added
+
+- Full-disk file search: a new "search everywhere" action in global search (below the cache-pool action) scans `/mnt/user` (the FUSE union of cache + all array disks) via compose-api `?action=search&scope=all`. It runs only after an explicit in-place confirmation warning that sleeping disks will be spun up (may take 1-2 minutes); the confirmation resets whenever the keyword changes, there is no "remember my choice", and the backend writes an audit log line for every full search. Requires updating compose-api on the host (old backends show an upgrade hint)
+- Cache-pool search with zero hits now points to the full-disk search action
+
 ## [1.2.5] - 2026-09-18
 
 ### Added

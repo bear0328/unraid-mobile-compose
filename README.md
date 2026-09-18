@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.5/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.6/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.2.6 (2026-09-18)
+
+- Full-disk file search: global search gains a "search everywhere" action scanning `/mnt/user` (cache + all array disks) via compose-api `?action=search&scope=all` — gated behind an explicit in-place confirmation (sleeping disks will spin up, may take 1-2 minutes), no "remember my choice", backend audit-logged; cache-pool zero-hit results now point to it
 
 ### v1.2.5 (2026-09-18)
 
