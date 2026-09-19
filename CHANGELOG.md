@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.8] - 2026-09-19
+
+### Changed
+
+- Global search is now mobile-first: the file-search action sits directly under the input (was at the very bottom of the results), the input uses `enterKeyHint="search"` so phone keyboards show a "Search" key, and pressing Enter with a query (without arrow-key selection) runs the file search straight away — Pro searches the index, free tier enters the spin-up confirmation. Arrow-down then Enter still opens the highlighted result
+- The real-time full-disk search links now spell out what happens ("nothing found? search all disks (wakes sleeping drives, ~1-2 min)")
+
+### Fixed
+
+- Tapping the search button on mobile now pops the keyboard immediately — the input is focused synchronously inside the tap gesture (was focused in a rAF callback, which mobile browsers block, requiring a second tap)
+- PC keyboard hints no longer show on mobile: global search / command palette footers and the text editor's "Ctrl+S · Esc" status line are desktop-only now; command palette placeholder no longer shows "Ctrl+Shift+P" on phones
+
 ## [1.2.7] - 2026-09-19
 
 ### Added

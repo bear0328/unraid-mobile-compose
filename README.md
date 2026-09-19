@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.8/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.7/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.8/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.2.8 (2026-09-19)
+
+- Global search goes mobile-first: file-search action moved directly under the input, phone keyboards show a "Search" key (`enterKeyHint`), Enter runs the file search (Pro → index, free → spin-up confirmation); tapping the search button now pops the keyboard immediately; PC keyboard hints (⌘K/Enter/↑↓/Ctrl+S) hidden on mobile. Frontend-only release — compose-api unchanged from v1.2.7
 
 ### v1.2.7 (2026-09-19)
 
