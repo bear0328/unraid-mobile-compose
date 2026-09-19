@@ -2,6 +2,20 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.2.9] - 2026-09-19
+
+### 新增
+
+- Webhook 通知大扩展:新增飞书群机器人 provider(可选 HMAC-SHA256 签名密钥);事件源从仅容器扩到 12 个,设置页逐项开关——VM 停止、UPS 市电/低电、奇偶校验开始/结束、磁盘状态、磁盘温度、阵列启停、unRAID 原生告警转发(webGui 铃铛同源,含 SMART)、日志关键字、CPU 占用、内存占用、CPU 温度;阈值类事件带可调阈值/迟滞/冷却,消息模板新增 `{{category}}` 变量
+
+### 优化
+
+- unRAID 原生告警转发按标题去重:同标题告警(磁盘温度抖动、Fix Common Problems 每日扫描等)6 小时窗口内只推一次(窗口时长设置页可调),不再每次出现都推
+
+### 修复
+
+- 修复 iOS 主屏 PWA 顶栏(logo/铃铛/徽章)模糊而 Safari 清晰的问题:根因是 `apple-mobile-web-app-status-bar-style=black-translucent` 让 PWA webview 伸到 iOS 状态栏下方,触发 iOS 系统级模糊,且该配置被 iOS 快照进主屏图标,仅更新应用无法生效;现已改为 `black`。**老用户需删除主屏图标,到 Safari 重新「添加到主屏幕」才能应用修复**
+
 ## [1.2.8] - 2026-09-19
 
 ### 变更

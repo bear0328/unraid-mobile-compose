@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.8/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.9/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.8/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.9/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.2.9 (2026-09-19)
+
+- Webhook notification overhaul: new Feishu (Lark) bot provider (optional HMAC-SHA256 sign secret); event sources grow from containers-only to 12 with per-source toggles — VM stop, UPS, parity check, disk status/temperature, array start/stop, unRAID native alert forwarding, log keywords, CPU/memory/CPU-temperature thresholds (editable thresholds + hysteresis + cooldown). Native alert forwarding dedupes by title inside a 6-hour window. Fixes iOS home-screen PWA blurry top bar — **existing users must delete the home-screen icon and re-add it from Safari to apply**. Frontend-only release — compose-api unchanged from v1.2.8
 
 ### v1.2.8 (2026-09-19)
 

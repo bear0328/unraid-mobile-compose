@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.9] - 2026-09-19
+
+### Added
+
+- Webhook notifications go far beyond container events: new Feishu (Lark) group-bot provider with optional HMAC-SHA256 sign secret, plus 11 new event sources with per-source toggles in Settings — VM stop, UPS power/battery-low, parity check start/finish, disk status, disk temperature, array start/stop, unRAID native alert forwarding (same source as the webGui bell, incl. SMART), log keywords, CPU usage, memory usage and CPU temperature. Threshold-based events come with editable thresholds, hysteresis and cooldown; message templates gain a `{{category}}` variable
+
+### Changed
+
+- Native unRAID alert forwarding now dedupes by alert title: repeats of the same title (disk-temperature flapping, daily Fix Common Problems scans, …) are suppressed inside a 6-hour window (adjustable in Settings) instead of notifying every occurrence
+
+### Fixed
+
+- iOS home-screen PWA: the top bar (logo / bell / badges) rendered blurry while Safari was sharp. Root cause: `apple-mobile-web-app-status-bar-style=black-translucent` extends the PWA webview under the iOS status bar, where iOS applies a system-level blur — and iOS snapshots this setting into the home-screen icon, so no app update alone could fix it. The meta is now `black`. **Existing users must delete the home-screen icon and re-add it from Safari (Share → Add to Home Screen) to pick up the fix**
+
 ## [1.2.8] - 2026-09-19
 
 ### Changed
