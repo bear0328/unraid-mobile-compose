@@ -71,8 +71,10 @@ const SEARCH_ALL_TIMEOUT_SEC = 120;
 // grep 该文件(SSD 常转),阵列休眠盘零接触。索引构建本身唤盘,故只允许计划任务/显式触发
 const INDEX_FILE = '/mnt/cache/appdata/unraid-mobile/file-index.tsv';
 const INDEX_BUILDER = '/boot/config/plugins/unraid-mobile/update-file-index.sh';
-// 【续 124】索引功能开关:flag 文件存在=启用(设置页 PUT indexcfg 控制);
-// 关闭时 scope=index 拒绝服务,cron 注册(go 钩子)也以此 flag 为条件
+// 【续 130】flag 语义收窄:只管「每日自动构建」(cron 注册/go 钩子以此为条件,
+// 设置页 PUT indexcfg 控制),不再是功能开关 —— scope=index 搜索只读 cache 池索引文件,
+// 零唤盘,无需开关;索引不存在自然 503。手动 reindex 任何时候可用(本就不查 flag)。
+// 安装默认不开自动构建(不再 touch flag),用户需要每天在设置页自行打开
 const INDEX_ENABLED_FLAG = '/boot/config/plugins/unraid-mobile/index-enabled';
 // 【续 125】定时索引整点(0-23,缺省 3),设置页可配
 const INDEX_HOUR_FILE = '/boot/config/plugins/unraid-mobile/index-hour';
@@ -667,9 +669,8 @@ function searchFiles(string $q, string $scope = 'cache'): array
     }
 
     if ($scope === 'index') {
-        if (!is_file(INDEX_ENABLED_FLAG)) {
-            fail(400, '索引功能已在设置中关闭');
-        }
+        // 【续 130】不再查 index-enabled flag:搜索只读索引文件零唤盘,功能常开;
+        // flag 只管每日自动构建。索引不存在 → 503,前端附「重建索引」
         if (!is_file(INDEX_FILE)) {
             fail(503, '索引不存在,请先重建索引');
         }
@@ -752,6 +753,7 @@ function parseSearchLines(string $out): array
 
 /**
  * 【续 124】索引状态(设置页卡片用):开关/有无索引/构建时间/条数/大小。
+ * 【续 130】enabled 语义 = 每日自动构建开(flag 只控 cron);索引搜索本身常开。
  * 条数与大小读 builder 写的 sidecar .meta(不扫 142MB 主文件);meta 缺失回退 filesize。
  */
 function indexStatus(): array
@@ -805,7 +807,7 @@ function refreshIndexCron(): void
     @shell_exec(PATH_ENV . ' sh -c ' . escapeshellarg($cmd));
 }
 
-/** 【续 124/125】索引配置:enabled 开关(写/删 flag)+ hour 定时整点(0-23);改完统一刷新 cron;enable 且无索引时后台补建 */
+/** 【续 124/125】索引配置:enabled = 每日自动构建开关(写/删 flag,【续 130】只管 cron)+ hour 定时整点(0-23);改完统一刷新 cron;enable 且无索引时后台补建 */
 function setIndexConfig(array $body): array
 {
     $hasEnabled = array_key_exists('enabled', $body);

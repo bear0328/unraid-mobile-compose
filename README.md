@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.9/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.0/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.9/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.0/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.0 (2026-09-26)
+
+- Dashboard trend rework: CPU / memory / network IO now show a compact text summary by default ("last N min sampled · avg / peak / low") with the trend chart collapsed behind a toggle; the expanded chart gains a detailed mode (auto-scaled axis, gridlines, time ruler, press/hover point inspection, Bézier smoothing). Network IO adds receive/transmit rate trends; new full server backup (app-backup.json — restore everything with just the WebDAV password); destructive compose operations confirm through a single entry point; Settings reordered for frequency. **compose-api updated**: the full-disk index toggle now only controls the daily auto build and defaults to off on install — re-run the install script on the host to upgrade the backend
 
 ### v1.2.9 (2026-09-19)
 

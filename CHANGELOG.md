@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.0] - 2026-09-26
+
+### Added
+
+- Full server backup: export/restore `app-backup.json` (all settings and credentials) in one click — after reinstalling the PWA or switching devices, restore everything with just the WebDAV password
+- Network IO card gains receive/transmit rate trend charts and text summaries (primary-interface scope, consistent with the big numbers)
+
+### Changed
+
+- Dashboard trend display rework: CPU / memory / network now show a compact text summary by default ("last N min sampled · avg / peak / low"), with the trend chart collapsed behind a toggle; the expanded chart is upgraded to a detailed mode — auto-scaled axis (snapped to multiples of 5, clamped to 0-100 for percentages), gridlines, time ruler, press-and-drag / hover to inspect any point, and Bézier-smoothed curves
+- Destructive compose operations now confirm through a single entry point (the confirmation bar is the only execution path)
+- Settings sections reordered: high-frequency items first
+- Full-disk file index: the toggle now only controls the daily auto build and defaults to off on install (manual rebuild remains available anytime) — **compose-api updated; re-run the install script on the host to upgrade the backend**
+
+### Fixed
+
+- Disk temperature history row: no longer shows a meaningless "42–42°C" range when the temperature is flat — a single value is shown instead
+- Stale badges ("·3h ago") no longer wrap onto two lines on narrow screens
+
 ## [1.2.9] - 2026-09-19
 
 ### Added

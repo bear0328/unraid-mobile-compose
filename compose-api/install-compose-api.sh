@@ -27,9 +27,9 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.2.9/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.0/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="e1ea9ffaeaacf849b5dedbbb33ff9549b7e9ff8d8224202fd749dc94fa314b05"
+EXPECTED_API_SHA256="5ba868fec64e6d162e9b7dbf757a9e26e63e987d778738f8a80a3e6b6e84b493"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"
 EXEC_DIR="/usr/local/emhttp/plugins/compose.manager"
@@ -136,15 +136,14 @@ for f in update-file-index.sh register-index-cron.sh; do
     [ -f "$PLUGIN_DIR/$f" ] && chmod +x "$PLUGIN_DIR/$f"
 done
 if [ -f "$PLUGIN_DIR/update-file-index.sh" ]; then
-    # 【续 124】索引开关 flag:安装默认开启(设置页可关;关闭后重装会重新打开)
-    touch "$PLUGIN_DIR/index-enabled"
-    # 【续 125】本机立即注册 cron(不必等重启走 go 钩子);整点读 index-hour(缺省凌晨 3 点)
+    # 【续 130】索引自动构建默认【不开】:不再 touch index-enabled flag,
+    # 需要每日定时构建的用户在设置页自行打开;手动重建(App 内按钮)任何时候可用,
+    # scope=index 搜索也不再以 flag 为条件(只读索引文件,零唤盘)
+    # 【续 125】本机立即注册 cron(不必等重启走 go 钩子);脚本内以 flag 为条件,无 flag 即不注册;整点读 index-hour(缺省凌晨 3 点)
     if [ -f "$PLUGIN_DIR/register-index-cron.sh" ]; then
         sh "$PLUGIN_DIR/register-index-cron.sh" || true
-    else
-        (crontab -l 2>/dev/null | grep -v 'update-file-index\.sh'; echo '0 3 * * * /boot/config/plugins/unraid-mobile/update-file-index.sh # unraid-mobile 文件索引') | crontab - 2>/dev/null || true
     fi
-    info "update-file-index.sh: $PLUGIN_DIR/(cron 每天整点构建,缺省 03:00,设置页可改;App 内也可手动重建;设置页可开关)"
+    info "update-file-index.sh: $PLUGIN_DIR/(每日自动构建默认关,设置页打开后 cron 每天整点构建,缺省 03:00;App 内可随时手动重建)"
 fi
 
 # ---------- 4. go 钩子(幂等:先清旧行再追加) ----------
