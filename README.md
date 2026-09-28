@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.0/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.1/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.0/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.1/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.1 (2026-09-28)
+
+- Large file downloads on the Shares page fixed: the 120s hard timeout is gone, replaced by a 30s stall watchdog — slow external links no longer guarantee failure; new download progress bar (percentage / cancel) and breakpoint resume (failed or cancelled downloads continue from where they stopped; file changes trigger a fresh download); Containers/VMs tab now opens instantly (GraphQL cache seeding with silent background refresh). Frontend-only release; compose-api is identical to v1.3.0
 
 ### v1.3.0 (2026-09-26)
 

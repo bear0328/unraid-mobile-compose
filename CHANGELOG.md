@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.1] - 2026-09-28
+
+### Added
+
+- File download progress bar: live received/total/percentage with a cancel button; failed or cancelled downloads support resuming from the breakpoint (HTTP Range + If-Range validation — if the file changed in between, it automatically restarts from scratch instead of producing a corrupt file)
+
+### Fixed
+
+- Large file downloads on the Shares page always failed: the old 120-second hard timeout was guaranteed to fire on slow external links (a 387 MB file needs ~13 minutes) — replaced with a 30-second stall watchdog with no total time limit
+- Containers/VMs tab took seconds to load on every switch: the page now seeds from the GraphQL cache on mount and renders instantly, refreshing silently in the background (stale-while-revalidate)
+
+Frontend-only release; compose-api is identical to v1.3.0
+
 ## [1.3.0] - 2026-09-26
 
 ### Added
