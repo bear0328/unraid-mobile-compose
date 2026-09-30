@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.2] - 2026-09-30
+
+### Added
+
+- Settings → About now shows build introspection: the running bundle hash vs. the server's latest, with a "check for update" one-tap reload when they differ — a PWA stuck on an old shell (a known iOS service-worker corner case) can now self-diagnose and self-heal; per-page seed status lines help diagnose cold-start issues
+
+### Fixed
+
+- Containers/VMs tab slow again on cold start: the mount seed source (GraphQL namespace cache) is deleted by design on container actions, stale poll ticks, and server switches — seeding then fell through to the multi-second live query. The seed now lives in a dedicated storage that is only overwritten by successful refreshes, never invalidated, and scoped per server URL
+- Shares root list slow on cold start for the same reason — same dedicated-seed fix (stale-while-revalidate; disk-wake semantics unchanged, no extra requests)
+
+Frontend-only release; compose-api is identical to v1.3.0/v1.3.1
+
 ## [1.3.1] - 2026-09-28
 
 ### Added

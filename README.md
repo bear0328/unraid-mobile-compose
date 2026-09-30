@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.1/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.2/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.1/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.2/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.2 (2026-09-30)
+
+- Containers/VMs tab and Shares root list cold-start slowness fixed for good: the mount seed moved to a dedicated storage that is only overwritten by successful refreshes and never invalidated (the old seed source — the GraphQL namespace cache — is deleted by design on container actions, stale poll ticks, and server switches, which brought back the multi-second live query); Settings → About gains build introspection (running vs. server bundle hash with a one-tap reload, plus per-page seed status) so a PWA stuck on an old shell can self-heal. Frontend-only release; compose-api is identical to v1.3.0/v1.3.1
 
 ### v1.3.1 (2026-09-28)
 
