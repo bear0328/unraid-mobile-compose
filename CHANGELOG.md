@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.3] - 2026-10-03
+
+### Added
+
+- Save button on the download bar once a download completes on iOS: opens the system share sheet with "Save to Files" to pick any location; cancelling keeps the data for another try
+
+### Fixed
+
+- Silent download loss on iOS: iPhone/iPad browsers and PWAs have no web download manager, so completed downloads previously vanished; since the share sheet requires a user gesture per platform rules, the flow is now "download → tap Save"
+- Deploy script: IFS newline + eval could join multiple arguments into separate commands, running ssh as a bare interactive shell that hijacked piped stdin (observed executing a confirmation "yes" as a remote command); ssh now always uses -n and retry no longer uses eval
+
+Frontend-only release; compose-api is identical to v1.3.0–v1.3.2
+
 ## [1.3.2] - 2026-09-30
 
 ### Added

@@ -165,9 +165,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.2/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.2/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -201,6 +201,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.3 (2026-10-03)
+
+- File downloads on iOS fixed for good: iPhone/iPad browsers and PWAs cannot save web downloads silently (completed downloads previously vanished without a trace), so on iOS the download bar now shows a Save button once a file completes — tap it to open the system share sheet and pick "Save to Files" to choose any location (the share sheet requires a user gesture per platform rules and cannot auto-open); also fixes a deploy-script pitfall where ssh could hijack piped stdin. Frontend-only release; compose-api is identical to v1.3.0–v1.3.2
 
 ### v1.3.2 (2026-09-30)
 
