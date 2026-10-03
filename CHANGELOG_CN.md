@@ -2,6 +2,16 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.4] - 2026-10-03
+
+### 修复
+
+- iOS 原生壳(TestFlight)连不上局域网服务器:Info.plist 补 NSLocalNetworkUsageDescription,未声明时 iOS 静默拦截局域网请求
+- 原生壳(capacitor://localhost 源)跨域处处 CORS 失败:nginx 新增 /healthz 端点;OPTIONS 预检 204 补全 Allow-Methods/Headers(if 块内 add_header 不继承外层);/dav/ 预检放行 Range/If-Range(断点续传)并暴露 ETag/Content-Range;鉴权失败 403 兜底也带 ACAO;/files 的 OPTIONS 短路移到 rewrite break 之前(否则被跳过落到鉴权 403)
+- iOS 原生壳下载「保存」失败:WKWebView 的 Web Share API 对文件支持不全,改 Capacitor Filesystem 逐块写 Cache + Share 插件弹系统面板(分块 base64,避免整文件转巨型字符串撑爆内存)
+
+纯前端版本,compose-api 与 v1.3.0~v1.3.3 相同
+
 ## [1.3.3] - 2026-10-03
 
 ### 新增

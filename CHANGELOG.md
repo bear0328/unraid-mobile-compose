@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.4] - 2026-10-03
+
+### Fixed
+
+- iOS native shell (TestFlight) could not reach LAN servers: Info.plist now declares NSLocalNetworkUsageDescription — without it iOS silently blocks local-network requests
+- Cross-origin failures everywhere from the native shell (capacitor://localhost origin): nginx gains an explicit /healthz endpoint; OPTIONS preflight 204s now carry full Allow-Methods/Headers (add_header inside an if block does not inherit the outer ones); /dav/ preflight allows Range/If-Range (resumable downloads) and exposes ETag/Content-Range; auth-failure 403 responses now carry ACAO; the /files OPTIONS short-circuit moved ahead of rewrite...break (otherwise skipped, falling through to a 403 auth challenge)
+- iOS native Save button failure: WKWebView's Web Share API has incomplete file support — downloads now write chunk-by-chunk to the Cache directory via the Capacitor Filesystem plugin and open the system share sheet via the Share plugin (chunked base64 avoids converting the whole file into one giant string)
+
+Frontend-only release; compose-api is identical to v1.3.0–v1.3.3
+
 ## [1.3.3] - 2026-10-03
 
 ### Added

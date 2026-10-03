@@ -202,6 +202,10 @@ temperature (once Pro is activated) are ready.
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.3.4 (2026-10-03)
+
+- iOS native shell (TestFlight) support: adds the Local Network permission declaration (iOS silently blocks LAN requests without it, surfacing as "server unreachable"); full-chain nginx CORS fixes — new /healthz endpoint, OPTIONS preflights now return complete Allow-Methods/Headers (DAV includes Range/If-Range for resumable downloads), and auth-failure 403 responses carry CORS headers too (previously even the "wrong password" hint was unreadable cross-origin); the native Save button now writes via the Capacitor Filesystem plugin and opens the system share sheet (WKWebView's Web Share API has incomplete file support). Frontend-only release; compose-api is identical to v1.3.0–v1.3.3
+
 ### v1.3.3 (2026-10-03)
 
 - File downloads on iOS fixed for good: iPhone/iPad browsers and PWAs cannot save web downloads silently (completed downloads previously vanished without a trace), so on iOS the download bar now shows a Save button once a file completes — tap it to open the system share sheet and pick "Save to Files" to choose any location (the share sheet requires a user gesture per platform rules and cannot auto-open); also fixes a deploy-script pitfall where ssh could hijack piped stdin. Frontend-only release; compose-api is identical to v1.3.0–v1.3.2
