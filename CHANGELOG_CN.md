@@ -2,6 +2,21 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.5] - 2026-10-03
+
+### 修复
+
+- 原生壳启动健康检查 graphql 探针「Load failed」:上游 unraid-api 自带 CORS(反射 Origin + Allow-Credentials),与 nginx add_header 叠出双 Access-Control-Allow-Origin,规范多值即非法——代理层剥掉上游 CORS 头,nginx 单侧出头(服务端日志全程 200,表象与防火墙拦截一模一样)
+- 原生壳 /config/ 全部读写静默失败(设备计数/激活留痕/settings.json 写回):limit_except 内 auth_basic 抢在 OPTIONS 短路前把跨域预检拒成 403——改 map 变量 realm(GET/OPTIONS 免鉴权,其余仍需 DAV 密码)
+- 原生壳共享页「未获取到共享列表」:useShares 构造 API 服务时剥掉 serverUrl 端口(web 同源时代遗留),webview 把裸 host 当相对路径打到 capacitor://localhost——原生分支统一走 apiBase()
+- apiBase() 在多服务器列表为空时回退 legacy 配置(续 144:全新装保存 WebDAV 密码即备份 load failed)
+
+### 新增
+
+- license 签发登记簿:gen-license 每次签发自动登记 .license-registry.jsonl(gitignored,含完整 key 串,本地留存)
+- license 激活留痕:激活时自动登记 /config/license-activations.json(哪把 key 在哪台设备——email + key 尾 8 位 + deviceId + 首末次时间,尽力而为)
+
+
 ## [1.3.4] - 2026-10-03
 
 ### 修复

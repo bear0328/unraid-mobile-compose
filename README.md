@@ -202,6 +202,11 @@ temperature (once Pro is activated) are ready.
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.3.5 (2026-10-03)
+
+- iOS native shell triple fix (all found via TestFlight on-device testing; all latent under same-origin web/PWA): (1) the /graphql proxy response carried duplicate Access-Control-Allow-Origin headers (upstream unraid-api reflects the Origin, nginx added its own) — browsers reject multi-value ACAO per spec, surfacing as "unRAID API unreachable" while server logs showed all 200s; upstream CORS headers are now stripped so nginx is the single source. (2) auth_basic inside limit_except in the /config/ location ran ahead of the OPTIONS short-circuit and rejected cross-origin preflights with 403, silently breaking device counting, activation trails and settings write-back on the native shell — replaced with a map-driven variable realm (GET/OPTIONS exempt). (3) the Shares page stripped the port from baseUrl (a same-origin-era leftover), so the native webview resolved it as a relative path against capacitor://localhost — the native branch now uses apiBase(). License bookkeeping: an issuance registry (gen-license auto-logs every signed key, full string kept locally) and an activation trail (which key was activated on which device, queryable server-side); apiBase now falls back to the legacy config when the server list is empty (fresh installs can back up right after saving). Frontend-only release; compose-api is identical to v1.3.0–v1.3.4
+
+
 ### v1.3.4 (2026-10-03)
 
 - iOS native shell (TestFlight) support: adds the Local Network permission declaration (iOS silently blocks LAN requests without it, surfacing as "server unreachable"); full-chain nginx CORS fixes — new /healthz endpoint, OPTIONS preflights now return complete Allow-Methods/Headers (DAV includes Range/If-Range for resumable downloads), and auth-failure 403 responses carry CORS headers too (previously even the "wrong password" hint was unreadable cross-origin); the native Save button now writes via the Capacitor Filesystem plugin and opens the system share sheet (WKWebView's Web Share API has incomplete file support). Frontend-only release; compose-api is identical to v1.3.0–v1.3.3

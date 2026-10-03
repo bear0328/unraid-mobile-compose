@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.5] - 2026-10-03
+
+### Fixed
+
+- Native-shell startup health check failed with "Load failed" on the graphql probe: upstream unraid-api is CORS-aware (reflects Origin + Allow-Credentials) and its headers stacked with nginx's add_header into duplicate Access-Control-Allow-Origin values, which are invalid per spec — upstream CORS headers are now stripped at the proxy so nginx is the single source (server logs showed 200s the whole time, making this look exactly like a firewall block)
+- All /config/ reads and writes silently failed on the native shell (device counting, activation trail, settings.json write-back): auth_basic inside limit_except ran ahead of the OPTIONS short-circuit and rejected cross-origin preflights with 403 — replaced with a map-driven variable realm (GET/OPTIONS exempt, everything else still requires DAV credentials)
+- Shares page showed "未获取到共享列表" on the native shell: useShares stripped the port from baseUrl (a same-origin-era leftover), so the webview resolved the endpoint as a relative path against capacitor://localhost — the native branch now uses apiBase()
+- apiBase() now falls back to the legacy config key when the multi-server list is empty (fresh installs could not save/back up the WebDAV password — session 144)
+
+### Added
+
+- License issuance registry: gen-license auto-appends every signed key to .license-registry.jsonl (gitignored, full key string kept locally)
+- License activation trail: the app records /config/license-activations.json on activation (which key on which device — email + key tail + deviceId + first/last seen, best-effort)
+
+
 ## [1.3.4] - 2026-10-03
 
 ### Fixed
