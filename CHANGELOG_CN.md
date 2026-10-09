@@ -2,6 +2,14 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.7] - 2026-10-10
+
+### 新增
+
+- iOS 质感改版:毛玻璃顶栏/标签栏(半透明 + 背景模糊,滚动透出)、iOS Large Title 折叠导航(34pt 页标题随滚动收缩,顶栏小标题交叉淡入)、容器/VM/共享文件列表改 iOS 圆角分组列表(hairline 分隔行)、全站卡片统一 grouped 无阴影风格、浅色底换 iOS 分组灰 #F2F2F7
+- 弹簧动效:底部抽屉上滑/下滑与居中弹窗改物理弹簧曲线(WAAPI 离线采样,零依赖,prefers-reduced-motion 自动回退原 CSS 动画)
+- iOS 原生壳触觉反馈:按钮按压、手动刷新完成、破坏性操作确认(@capacitor/haptics;Web/PWA 端为空操作,需 TestFlight 1.3.7 及以上)
+
 ## [1.3.6] - 2026-10-09
 
 ### 新增

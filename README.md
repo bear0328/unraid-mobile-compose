@@ -202,6 +202,10 @@ temperature (once Pro is activated) are ready.
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.3.7 (2026-10-10)
+
+- iOS look-and-feel overhaul: materials and structure aligned with native iOS — frosted-glass top bar and tab bar (translucent with backdrop blur, content shows through while scrolling), per-page 34pt large titles that collapse on scroll and cross-fade into the nav bar title (iOS Large Title), container/VM/file lists rebuilt as rounded grouped lists with hairline separators, all cards unified to a flat grouped style, and the light background switched to the iOS grouped gray. Bottom sheets and modals now use spring physics animations (honors Reduce Motion); the iOS native shell gains haptic feedback (button taps, refresh completion, destructive-action warnings — requires TestFlight 1.3.7 or later). Frontend-only release: compose-api is identical to v1.3.6, no need to re-run the install script
+
 ### v1.3.6 (2026-10-09)
 
 - Container update progress visualization: live image-pull layer progress and rebuild logs while updating a container (new async job API in compose-api, frontend log modal polling; conflicts 409 / missing user template 422, no more silent failures). Fixes: all PUT writes failed on the iOS native shell with "compose-api unreachable" — the nginx CORS methods list omitted PUT, now complete; the /graphql proxy's 60s timeout cut off long synchronous requests causing false failures — aligned with the frontend timeout at 300s. Internal: frontend architecture refactor (zustand unified global state, TanStack Query takes over caching/dedup/invalidation, polling unified, oversized Settings/Debug/GlobalSearch pages split, unified modal/button component system) with no behavior change. **compose-api updated** (api.php gains dockerupdate/dockerlog; update-status.php gains single-image mode) — re-run the install script on the host

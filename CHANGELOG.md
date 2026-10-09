@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.7] - 2026-10-10
+
+### Added
+
+- iOS look-and-feel overhaul: frosted-glass top bar and tab bar (translucent with backdrop blur), iOS Large Title collapsible navigation (34pt page title shrinks on scroll while the nav bar title cross-fades in), container/VM/file lists rebuilt as iOS rounded grouped lists with hairline separators, all cards unified to a flat grouped style, light background switched to the iOS grouped gray #F2F2F7
+- Spring animations: bottom sheets and centered modals now animate with physics-based springs (offline-sampled WAAPI keyframes, zero dependencies, automatic fallback to the original CSS animations under prefers-reduced-motion)
+- Haptic feedback on the iOS native shell: button taps, manual refresh completion, destructive-action confirmations (@capacitor/haptics; no-op on Web/PWA, requires TestFlight 1.3.7 or later)
+
 ## [1.3.6] - 2026-10-09
 
 ### Added
