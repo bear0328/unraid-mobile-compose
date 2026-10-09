@@ -80,6 +80,10 @@ const INDEX_ENABLED_FLAG = '/boot/config/plugins/unraid-mobile/index-enabled';
 const INDEX_HOUR_FILE = '/boot/config/plugins/unraid-mobile/index-hour';
 // cron 注册/摘除脚本(读 flag + hour;install 脚本安装,go 钩子重启也调它)
 const INDEX_CRON_REGISTER = '/boot/config/plugins/unraid-mobile/register-index-cron.sh';
+// 【续 147】docker 容器更新(异步带 pull 进度日志):工作目录在 tmpfs,重启自清零 flash 磨损
+const DOCKER_UPDATE_DIR = '/tmp/unraid-mobile-dockerupdate';
+const DOCKER_UPDATE_SCRIPT = '/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container';
+const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -647,6 +651,99 @@ function runComposeAsync(string $dir, string $op, string $args): void
     exec('nohup sh -c ' . escapeshellarg($inner) . ' > /dev/null 2>&1 &');
 }
 
+// ==================== docker 容器更新(续 147,异步带 pull 进度日志) ====================
+
+/**
+ * 【续 147】按容器名找 webGui 用户模板(update_container 无模板会静默跳过,必须预检)。
+ * 与 DockerTemplates::getUserTemplate 同语义:扫 templates-user/my-*.xml,
+ * 按模板内 <Name> 与容器名精确匹配(不是按文件名)。
+ */
+function findUserTemplate(string $name): ?string
+{
+    foreach (glob(TEMPLATE_USER_DIR . '/my-*.xml') ?: [] as $file) {
+        $xml = (string) @file_get_contents($file);
+        if (preg_match('/<Name>\s*([^<]+?)\s*<\/Name>/', $xml, $m) && $m[1] === $name) {
+            return $file;
+        }
+    }
+    return null;
+}
+
+/**
+ * 【续 147】生成 docker 更新异步任务脚本(每次调用重写,自更新):
+ *  1) 记更新前 容器ID/镜像ID/image ref
+ *  2) docker pull(Config.Image 与模板 <Repository> 去重)—— 层进度真落日志(耗时大头;
+ *     官方 update_container 的 pull 进度走 nchan 拿不到,故自己先拉)
+ *  3) 官方 update_container 重建(镜像已就位,秒级;前后自打标记行)
+ *  4) 兜底校验:容器 ID 与镜像 ID 都不变 = 脚本静默无动作 → error(exit 28)
+ *  5) result.json(与 compose last_result.json 同构)→ 成功调 update-status.php --image
+ *     回写更新缓存 → 审计 → 放锁
+ */
+function dockerUpdateJobScript(string $name, string $tmpl, string $dir, string $ip): string
+{
+    return '#!/bin/bash' . "\n"
+        . 'cd ' . escapeshellarg($dir) . ' || exit 1' . "\n"
+        . 'exec > update.log 2>&1' . "\n"
+        . 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' . "\n"
+        . 'name=' . escapeshellarg($name) . "\n"
+        . 'read -r oldcid oldiid img < <(/usr/bin/docker inspect "$name" --format \'{{.Id}} {{.Image}} {{.Config.Image}}\')' . "\n"
+        . 'echo "[$(date +%H:%M:%S)] 更新容器 $name"' . "\n"
+        . 'echo "镜像: $img"' . "\n"
+        . 'trep=$(sed -n \'s:.*<Repository>\\(.*\\)</Repository>.*:\1:p\' ' . escapeshellarg($tmpl) . ' | head -1 | tr -d \'[:space:]\')' . "\n"
+        . 'pulls="$img"; [ -n "$trep" ] && [ "$trep" != "$img" ] && pulls="$img $trep"' . "\n"
+        . 'ec=0' . "\n"
+        . 'for ref in $pulls; do' . "\n"
+        . '  echo; echo "== 拉取镜像 $ref =="' . "\n"
+        . '  /usr/bin/docker pull "$ref" || { ec=$?; break; }' . "\n"
+        . 'done' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  echo; echo "== 重建容器 =="' . "\n"
+        . '  ' . escapeshellarg(DOCKER_UPDATE_SCRIPT) . ' "$name"; uec=$?' . "\n"
+        . '  echo "(update_container exit $uec)"; [ "$uec" -ne 0 ] && ec=$uec' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  read -r newcid newiid < <(/usr/bin/docker inspect "$name" --format \'{{.Id}} {{.Image}}\' 2>/dev/null)' . "\n"
+        . '  if [ "$newcid" = "$oldcid" ] && [ "$newiid" = "$oldiid" ]; then' . "\n"
+        . '    echo; echo "!! 未检测到更新动作(容器/镜像 ID 均未变)"; ec=28' . "\n"
+        . '  fi' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  echo; echo "== 更新完成 =="' . "\n"
+        . '  /usr/bin/php ' . escapeshellarg(__DIR__ . '/update-status.php') . ' --image "$img" >/dev/null 2>&1' . "\n"
+        . 'fi' . "\n"
+        . 'printf \'{"result":"%s","exit_code":%d,"operation":"dockerupdate","timestamp":"%s"}\' '
+        . '"$([ "$ec" -eq 0 ] && echo success || echo error)" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > result.json' . "\n"
+        . 'printf \'[%s] action=dockerupdate stack=%s result=%s ip=%s\n\' "$(date -Iseconds)" "$name" '
+        . '"$([ "$ec" -eq 0 ] && echo ok || echo fail)" ' . escapeshellarg($ip) . ' >> ' . escapeshellarg(AUDIT_LOG) . "\n"
+        . 'rm -f op-lock' . "\n";
+}
+
+/** 【续 147】op-lock(fopen x 原子,撞锁 409;tmpfs 重启自清,无 compose 的 flash 残留锁问题)+ 落 job.sh + nohup */
+function runDockerUpdateAsync(string $name, string $tmpl): void
+{
+    $dir = DOCKER_UPDATE_DIR . '/' . $name;
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
+        fail(500, '工作目录创建失败');
+    }
+    // 上一轮 result 先清,否则前端轮询会读到旧结果
+    @unlink($dir . '/result.json');
+    $lockFile = $dir . '/op-lock';
+    $lock = @fopen($lockFile, 'x');
+    if ($lock === false) {
+        audit('dockerupdate', $name, 'fail');
+        fail(409, '该容器有更新正在进行中,请等待完成');
+    }
+    fwrite($lock, 'dockerupdate');
+    fclose($lock);
+    $job = $dir . '/job.sh';
+    if (file_put_contents($job, dockerUpdateJobScript($name, $tmpl, $dir, (string) ($_SERVER['REMOTE_ADDR'] ?? '-'))) === false) {
+        @unlink($lockFile);
+        fail(500, '任务脚本写入失败');
+    }
+    chmod($job, 0700);
+    exec(PATH_ENV . ' nohup bash ' . escapeshellarg($job) . ' > /dev/null 2>&1 &');
+}
+
 // ---------- 路由 ----------
 
 /**
@@ -925,6 +1022,23 @@ if ($method === 'GET') {
         ]);
     }
 
+    // 【续 147】docker 容器更新日志:进度/进行状态/结果一把全给(前端少一次往返)
+    if ($action === 'dockerlog') {
+        $name = (string) ($_GET['name'] ?? '');
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/', $name)) {
+            fail(400, '非法容器名');
+        }
+        $dir = DOCKER_UPDATE_DIR . '/' . $name;
+        if (!is_dir($dir)) {
+            fail(404, '无更新记录: ' . $name);
+        }
+        ok([
+            'log' => tailFile($dir . '/update.log'),
+            'running' => file_exists($dir . '/op-lock'),
+            'result' => readJsonFile($dir . '/result.json'),
+        ]);
+    }
+
     fail(400, '未知 action: ' . $action);
 }
 
@@ -973,6 +1087,27 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         }
         exec(PATH_ENV . ' nohup sh ' . escapeshellarg(INDEX_BUILDER) . ' > /dev/null 2>&1 &');
         audit('reindex', '-', 'ok');
+        ok(['async' => true]);
+    }
+
+    // 【续 147】docker 容器更新(异步带 pull 进度;替代无进度的 GraphQL updateContainer)
+    if ($action === 'dockerupdate') {
+        $name = (string) ($body['name'] ?? '');
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/', $name)) {
+            fail(400, '非法容器名');
+        }
+        $noop = [];
+        $inspectCode = 1;
+        exec(PATH_ENV . ' ' . DOCKER . ' inspect ' . escapeshellarg($name) . ' >/dev/null 2>&1', $noop, $inspectCode);
+        if ($inspectCode !== 0) {
+            fail(404, '容器不存在: ' . $name);
+        }
+        // update_container 无模板会静默跳过(continue),提前 422 报清
+        $tmpl = findUserTemplate($name);
+        if ($tmpl === null) {
+            fail(422, '该容器无 webGui 模板,无法用此方式更新(可走 Compose/命令行)');
+        }
+        runDockerUpdateAsync($name, $tmpl);
         ok(['async' => true]);
     }
 

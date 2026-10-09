@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.6] - 2026-10-09
+
+### Added
+
+- Container update progress visualization: updating a container now shows live image-pull layer progress and rebuild logs (new async job API in compose-api, frontend log modal polls every 2s; conflicts return 409 and missing user templates return 422 instead of failing silently)
+
+### Fixed
+
+- All write operations (container updates and other PUT requests) failed on the iOS native shell with "compose-api unreachable": the nginx CORS Allow-Methods list omitted PUT, so cross-origin preflights were rejected — the list is now complete (GETs worked the whole time, which made this highly misleading)
+- Updating large images reported failure in the UI while the server actually succeeded: the /graphql proxy's 60s timeout cut off long synchronous requests — proxy and frontend timeouts are now aligned at 300s
+
+### Internal
+
+- Frontend architecture refactor (no behavior change, groundwork for future iterations): zustand unifies global state (8 hand-rolled pub/sub implementations consolidated), TanStack Query takes over data caching/request dedup/invalidation (the hand-written localStorage cache layer is removed entirely), polling logic converged into a single hook, the oversized Settings/Debug/GlobalSearch pages split up, and a unified modal/button component system
+
+**compose-api updated** (api.php gains dockerupdate/dockerlog endpoints; update-status.php gains single-image mode): re-run the install script on the host to upgrade the backend
+
 ## [1.3.5] - 2026-10-03
 
 ### Fixed

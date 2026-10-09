@@ -12,7 +12,8 @@
  * —— pull 刚保证了"本地==远端"这一事实,所以这是真实状态而非粉饰;
  * unraid-api cron 下次运行会重新计算并覆盖。
  *
- * 用法: php update-status.php <stack_dir>
+ * 用法: php update-status.php <stack_dir>     — compose 栈(pull/rebuild 后)
+ *       php update-status.php --image <ref>   — 单镜像(【续 147】docker 容器更新后)
  * 无参数 / 无镜像 / 状态文件不存在 → 静默 exit 0(绝不影响主流程)
  */
 
@@ -20,20 +21,31 @@ if (PHP_SAPI !== 'cli' || $argc < 2) {
     exit(0);
 }
 
-$dir = (string) $argv[1];
 $statusFile = '/var/lib/docker/unraid-update-status.json';
 
-if (!is_dir($dir) || !is_file($statusFile)) {
+if (!is_file($statusFile)) {
     exit(0);
 }
 
-// 栈内镜像列表(compose v2;失败 → 空数组静默退出)
 $images = [];
-exec(
-    sprintf('cd %s && /usr/bin/docker compose config --images 2>/dev/null', escapeshellarg($dir)),
-    $images
-);
-$images = array_values(array_filter(array_map('trim', $images)));
+if ($argv[1] === '--image') {
+    // 【续 147】单镜像模式:ref 为空静默退出
+    $one = trim((string) ($argv[2] ?? ''));
+    if ($one !== '') {
+        $images = [$one];
+    }
+} else {
+    $dir = (string) $argv[1];
+    if (!is_dir($dir)) {
+        exit(0);
+    }
+    // 栈内镜像列表(compose v2;失败 → 空数组静默退出)
+    exec(
+        sprintf('cd %s && /usr/bin/docker compose config --images 2>/dev/null', escapeshellarg($dir)),
+        $images
+    );
+    $images = array_values(array_filter(array_map('trim', $images)));
+}
 if (!$images) {
     exit(0);
 }
