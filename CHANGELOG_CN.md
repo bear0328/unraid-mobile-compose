@@ -54,7 +54,6 @@
 - license 签发登记簿:gen-license 每次签发自动登记 .license-registry.jsonl(gitignored,含完整 key 串,本地留存)
 - license 激活留痕:激活时自动登记 /config/license-activations.json(哪把 key 在哪台设备——email + key 尾 8 位 + deviceId + 首末次时间,尽力而为)
 
-
 ## [1.3.4] - 2026-10-03
 
 ### 修复
@@ -82,11 +81,11 @@
 
 ### 新增
 
-- 设置 → 关于 新增构建自省:显示运行中 bundle hash 与服务器最新 hash,不一致时「检查更新」一键重载——PWA 跑旧壳(iOS service-worker 已知角落)可自查自愈;附各页播种状态诊断行
+- 设置 → 关于 新增构建自省:显示运行中 bundle hash 与服务器最新 hash(不一致时「检查更新」一键重载——PWA 跑旧壳可自查自愈),并附各页播种状态诊断行
 
 ### 修复
 
-- 容器/VM 页签冷启动又变慢:挂载播种的数据源(GraphQL namespace cache)会被容器操作、轮询失效、切换服务器按设计整个删除,播种落空后只能等数秒的真实查询;播种改为写入专用存储——只被成功刷新覆盖、永不失效、按 serverUrl 隔离
+- 容器/VM 页签冷启动仍慢:挂载播种的数据源(GraphQL namespace cache)会被容器操作、轮询失效、切换服务器按设计整个删除,播种落空后只能等数秒的真实查询;播种改为写入专用存储——只被成功刷新覆盖、永不失效、按 serverUrl 隔离
 - 共享页根列表冷启动偏慢(同一根因)——同款专用播种修复(stale-while-revalidate;唤盘语义不变,不新增请求)
 
 纯前端版本,compose-api 与 v1.3.0/v1.3.1 相同
@@ -99,8 +98,8 @@
 
 ### 修复
 
-- 共享页下载大文件必失败:原 120 秒硬超时在外网慢链路下必触发(如 387MB 文件约需 13 分钟),改为「30 秒无新数据」停滞看门狗,总时长不限
-- 容器/VM 页签切换要等数秒:挂载时同步播种 GraphQL 缓存,立即渲染上次数据,后台静默刷新(stale-while-revalidate)
+- 共享页大文件下载中途停滞:120s 硬超时改为 30s 停滞看门狗(总时长不限)+ 断点续传(Range / If-Range),弱网大文件可续
+- 容器/VM 页签打开要数秒:页面挂载时从 GraphQL cache 播种秒开(stale-while-revalidate),后台静默刷新
 
 纯前端版本,compose-api 与 v1.3.0 相同
 
@@ -117,11 +116,13 @@
 - compose 破坏性操作确认收敛为单入口(确认条为唯一执行口)
 - 设置页区块重排:高频项在上
 - 全盘文件索引:开关语义收窄为只管「每日自动构建」且安装默认关闭(手动重建任何时刻可用)——**compose-api 有更新,宿主需重跑安装脚本升级后端**
+- 部署脚本清理:删除失效的 `deploy-dev.sh` 与 `deploy-stable.sh --mode dev` 镜像流程(compose 跑另一 tag,必空转);`build.sh` 移除无消费方的镜像/tar 构建
 
 ### 修复
 
 - 磁盘温度历史行:温度平稳时不再显示无意义的「42–42°C」区间,只显示单值
 - 修复 staleness 徽章(「·3h 前」)在窄屏折成两行
+- 修复 `deploy-stable.sh --dry-run` 仍真实部署的 bug(dry-run 现在只打印)
 
 ## [1.2.9] - 2026-09-19
 

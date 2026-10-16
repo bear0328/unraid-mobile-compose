@@ -3,6 +3,8 @@
 **English** | [简体中文](README_CN.md)
 
 [![Telegram Group](https://img.shields.io/badge/Telegram-Group-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+l1iA02ZkOK1lNmEx)
+[![Docker Image Version](https://img.shields.io/docker/v/bear0328/unraid-mobile?sort=semver&label=docker)](https://hub.docker.com/r/bear0328/unraid-mobile)
+[![Docker Pulls](https://img.shields.io/docker/pulls/bear0328/unraid-mobile)](https://hub.docker.com/r/bear0328/unraid-mobile)
 
 A mobile-optimized management interface for unRAID servers, distributed as a single Docker image
 ([`bear0328/unraid-mobile`](https://hub.docker.com/r/bear0328/unraid-mobile)). Data via the unRAID
@@ -29,7 +31,7 @@ GraphQL API (7.2+; disk sleep badges and network rate stats require unRAID 7.3+ 
 |------|------|
 | Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (CPU/memory/disks/network/passthrough/snapshots, read from libvirt XML) |
 | Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹ |
-| Shares file browsing / download / image preview, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
+| Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
 | Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, **multi-server**, alert notifications (Webhook), disk cleanup |
 
 ¹ Requires the host agent (compose-api) — a small component installed on the unRAID host as described
@@ -42,6 +44,22 @@ notice there first.** The free version requires no host installation at all.
 Pro is a **one-time purchase**: pay once, use forever (includes 1 year of updates). Enter the key in
 "Settings → License" to unlock — verification is fully offline, no network calls, no data uploaded.
 See GitHub Releases / future announcements for purchase channels.
+
+## Alert notifications (Webhook)
+
+"Settings → Webhook notifications" pushes server events to **Bark / Telegram / Discord /
+Feishu (custom bot, signature supported) / Email (Resend) / custom HTTP**. Event sources are
+opt-in (only container-stop is on by default):
+
+- State changes: container stop, VM stop, UPS line-power change / low battery, parity-check
+  start/finish (sync errors escalate to error), disk status abnormal, array start/stop
+- Threshold alerts (with hysteresis + cooldown): CPU usage, memory usage, CPU temperature (Pro),
+  disk temperature, UPS low battery
+- Others: **unRAID native alert forwarding** (system notification-center ALERT/WARNING, incl.
+  SMART), log keyword hits
+
+Disk events follow the existing 30-minute disk-cache cadence — monitoring never spins up
+sleeping disks. Template variables: `{{container}} {{state}} {{server}} {{time}} {{category}}`.
 
 ## Quick start (Docker Hub image)
 
@@ -65,7 +83,7 @@ Open `http://<unraid-IP>:3999`, go to "Settings" and fill in:
 > The API key lives only in your own browser's localStorage and is **never** written to any file on
 > the server.
 
-Image tags: `latest` (newest stable) / `1.2.4` (pinned version). linux/amd64 only (unRAID platform).
+Image tags: `latest` (newest stable) / `1.3.8` (pinned version). linux/amd64 only (unRAID platform).
 
 ### Alternative: docker-compose
 
@@ -102,7 +120,8 @@ enabled per mount:
 |------|------------|------|
 | Config persistence | `-v .../config:/usr/share/nginx/html/config` | Stores serverUrl only; recommended |
 | File manager | `-v /mnt/user:/mnt/user` + `-v /mnt/cache:/mnt/cache` + WebDAV password file | Password entered in Settings, must match nginx `.davpasswd` |
-| Host system logs | `-v /var/log:/mnt/hostlog:ro` + log password file | Same idea, `.logpasswd` |
+| Read-only disk/pool browsing (Shares → Disks tab) | `-v /mnt:/mnt:ro` | Read-only; recreate the container after adding disks/pools |
+| Host system logs | `-v /var/log:/hostlog:ro` + log password file | Same idea, `.logpasswd` |
 | Compose stacks / CPU temperature (Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + host agent | See next section |
 
 Full docker-compose example:
@@ -121,7 +140,8 @@ services:
       # uncomment as needed:
       # - /mnt/user:/mnt/user
       # - /mnt/cache:/mnt/cache
-      # - /var/log:/mnt/hostlog:ro
+      # - /mnt:/mnt:ro  # read-only disk/pool browsing (Shares → Disks tab)
+      # - /var/log:/hostlog:ro
       # - /var/run/php-fpm.sock:/hostrun/php-fpm.sock
     restart: unless-stopped
 ```
@@ -165,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.8/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.8/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -257,10 +277,8 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ### v1.2.5 (2026-09-18)
 
-- Global search (Cmd+K) now covers VMs, root shares and Compose stacks (cache-only reads, no new requests), with grouped results, recent-search history and fuzzy matching (English/pinyin aliases)
-- New compose-api `?action=search&q=` endpoint: host-side file-name search over `/mnt/cache` only (array disks untouched, sleeping disks never woken); powers the explicit "search files on cache pool" action in global search. **Requires updating compose-api on the host** (install script updated; old backends show an upgrade hint)
-- Containers page: one in-page search box filters Docker containers (name/image/state), VMs and Compose stacks
-- iOS app shell via Capacitor 8 (web behavior unchanged)
+- Global search: new search page (header search icon) that searches across Docker containers, Compose stacks, VMs, shares, and files; file search includes cache-pool paths (e.g. `.strm` libraries) via the new compose-api `?action=search` endpoint (runs `find` on the host with a time budget)
+- Dockerfile: remove the nginx IPv6-listen entrypoint script (only IPv4 is listened on); works around an apk-tools 3.0.8 regression in nginx:alpine where `apk manifest nginx` stalls for minutes at container start
 
 ### v1.2.4 (2026-08-23)
 

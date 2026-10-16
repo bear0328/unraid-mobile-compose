@@ -3,6 +3,8 @@
 **[English](README.md)** | 简体中文
 
 [![Telegram 交流群](https://img.shields.io/badge/Telegram-交流群-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+l1iA02ZkOK1lNmEx)
+[![Docker 镜像版本](https://img.shields.io/docker/v/bear0328/unraid-mobile?sort=semver&label=docker)](https://hub.docker.com/r/bear0328/unraid-mobile)
+[![Docker Pulls](https://img.shields.io/docker/pulls/bear0328/unraid-mobile)](https://hub.docker.com/r/bear0328/unraid-mobile)
 
 专为移动设备优化的 unRAID 服务器管理界面,以单 Docker 镜像分发
 ([`bear0328/unraid-mobile`](https://hub.docker.com/r/bear0328/unraid-mobile))。
@@ -28,7 +30,7 @@ unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正�
 |------|------|
 | 仪表盘全部监控:CPU / 内存 / 网络 / 磁盘 / 阵列 / parity 校验进度 / 历史曲线 / 收藏、unRAID 告警徽章 | 容器 / VM 启停 / 重启 / 暂停 / 恢复操作、**VM 增强详情**¹(CPU/内存/磁盘/网络/直通/快照,读 libvirt XML) |
 | 容器 / VM 列表、容器详情(端口/挂载/网络/磁盘占用)、容器日志、VM 基础详情 | **Compose 栈管理**(列表/日志/up/down/pull/rebuild/yaml 编辑)¹ |
-| Shares 文件浏览 / 下载 / 图片预览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
+| Shares 文件浏览 / 下载 / 图片预览、磁盘/缓存池只读浏览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
 | 全局搜索、命令面板、配置备份/导入、单服务器、深色主题、PWA | **容器一键更新**(单个/批量,webGui 同款)、**UPS 监控**(电量/续航/负载)、容器批量操作、**多服务器**、告警通知(Webhook)、磁盘清理 |
 
 ¹ 依赖宿主后端(compose-api)——需按下方「Pro 宿主后端」一节在 unRAID 宿主安装小组件,
@@ -39,6 +41,19 @@ unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正�
 
 Pro 为**买断制**:一次付费永久使用(含 1 年更新)。在「设置 → License」输入 key 即解锁,
 全程离线验证,不联网、不上传任何数据。购买渠道见 GitHub Releases / 后续公告。
+
+## 告警通知(Webhook)
+
+「设置 → Webhook 通知」可把服务器事件推送到 **Bark / Telegram / Discord / 飞书(自定义机器人,
+支持签名校验)/ Email(Resend)/ 自定义 HTTP**。事件源按需开启(默认仅容器停止):
+
+- 状态变化:容器停止、VM 停止、UPS 市电变化/电池低电、奇偶校验开始/结束(有同步错误升级
+  error)、磁盘状态异常、阵列启停
+- 阈值告警(带迟滞 + 冷却):CPU 占用、内存占用、CPU 温度(Pro)、磁盘温度、UPS 低电量
+- 其他:**unRAID 原生告警转发**(系统通知中心 ALERT/WARNING,含 SMART 等)、日志关键字命中
+
+磁盘类事件沿用 30 分钟磁盘缓存节拍,不会因监控额外唤醒休眠盘。消息模板变量:
+`{{container}} {{state}} {{server}} {{time}} {{category}}`。
 
 ## 快速开始(Docker Hub 镜像)
 
@@ -61,7 +76,7 @@ docker run -d \
 
 > apiKey 只存在你自己浏览器的 localStorage,**不会**写到服务器任何文件。
 
-镜像 tag:`latest`(最新稳定) / `1.2.4`(固定版本)。仅 linux/amd64(unRAID 平台)。
+镜像 tag:`latest`(最新稳定) / `1.3.8`(固定版本)。仅 linux/amd64(unRAID 平台)。
 
 ### 方式二:docker-compose
 
@@ -97,7 +112,8 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-unraid-mobile.xml
 |------|------------|------|
 | 配置持久化 | `-v .../config:/usr/share/nginx/html/config` | 只存 serverUrl,建议加 |
 | 文件管理 | `-v /mnt/user:/mnt/user` + `-v /mnt/cache:/mnt/cache` + WebDAV 密码文件 | 密码在设置页输入,与 nginx `.davpasswd` 一致 |
-| 宿主系统日志 | `-v /var/log:/mnt/hostlog:ro` + 日志密码文件 | 同上,`.logpasswd` |
+| 磁盘/缓存池只读浏览(共享页 → 硬盘页签) | `-v /mnt:/mnt:ro` | 只读;新加盘/池需 recreate 容器才可见 |
+| 宿主系统日志 | `-v /var/log:/hostlog:ro` + 日志密码文件 | 同上,`.logpasswd` |
 | Compose 栈管理 / CPU 温度(Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + 宿主后端 | 见下节 |
 
 完整 docker-compose 示例:
@@ -116,7 +132,8 @@ services:
       # 按需取消注释:
       # - /mnt/user:/mnt/user
       # - /mnt/cache:/mnt/cache
-      # - /var/log:/mnt/hostlog:ro
+      # - /mnt:/mnt:ro  # 磁盘/缓存池只读浏览(共享页 → 硬盘页签)
+      # - /var/log:/hostlog:ro
       # - /var/run/php-fpm.sock:/hostrun/php-fpm.sock
     restart: unless-stopped
 ```
@@ -152,9 +169,9 @@ Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.8/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.3/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.8/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -241,10 +258,8 @@ bash install-compose-api.sh
 
 ### v1.2.5(2026-09-18)
 
-- 全局搜索(Cmd+K)扩展:VM、根分享、Compose 栈(只读缓存,零新请求)+ 分组结果 + 最近搜索 + 英文/拼音别名模糊匹配
-- compose-api 新增 `?action=search&q=` 端点:宿主侧文件名搜索,仅扫 `/mnt/cache`(不碰阵列盘、不唤醒休眠盘);支撑全局搜索里显式触发的「在缓存盘文件中搜索」。**需在宿主更新 compose-api**(安装脚本已更新;旧版后端会提示升级)
-- 容器管理页新增页内搜索框:一个输入框同时过滤 Docker 容器(名称/镜像/状态)、虚拟机、Compose 栈
-- iOS App 套壳(Capacitor 8,Web 端行为零变化)
+- 新增全局搜索页(顶栏搜索图标):可搜索 Docker 容器、Compose 栈、虚拟机、共享目录及文件;文件搜索支持缓存盘路径(如 `.strm` 媒体库),由 compose-api 新增 `?action=search` 端点在宿主执行 `find`(带时限)
+- Dockerfile 移除 nginx IPv6 监听 entrypoint 脚本(实际只监听 IPv4);规避 nginx:alpine 升级 apk-tools 3.0.8 后 `apk manifest nginx` 卡数分钟导致容器启动超时的问题
 
 ### v1.2.4(2026-08-23)
 

@@ -54,7 +54,6 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - License issuance registry: gen-license auto-appends every signed key to .license-registry.jsonl (gitignored, full key string kept locally)
 - License activation trail: the app records /config/license-activations.json on activation (which key on which device — email + key tail + deviceId + first/last seen, best-effort)
 
-
 ## [1.3.4] - 2026-10-03
 
 ### Fixed
@@ -82,11 +81,11 @@ Frontend-only release; compose-api is identical to v1.3.0–v1.3.2
 
 ### Added
 
-- Settings → About now shows build introspection: the running bundle hash vs. the server's latest, with a "check for update" one-tap reload when they differ — a PWA stuck on an old shell (a known iOS service-worker corner case) can now self-diagnose and self-heal; per-page seed status lines help diagnose cold-start issues
+- Settings → About now shows build introspection: the running bundle hash vs. the server's latest ("check for update" with one-tap reload when they differ — a stale-shell PWA can now self-diagnose and self-heal), plus per-page seed status lines for cold-start diagnostics
 
 ### Fixed
 
-- Containers/VMs tab slow again on cold start: the mount seed source (GraphQL namespace cache) is deleted by design on container actions, stale poll ticks, and server switches — seeding then fell through to the multi-second live query. The seed now lives in a dedicated storage that is only overwritten by successful refreshes, never invalidated, and scoped per server URL
+- Containers/VM tab slow again on cold start: the mount seed source (GraphQL namespace cache) gets deleted by design on mutations, stale poll ticks, and server switches — seeding then fell through to the multi-second live query. The seed now lives in a dedicated storage that is only overwritten by successful refreshes, never invalidated, and is scoped per server URL
 - Shares root list slow on cold start for the same reason — same dedicated-seed fix (stale-while-revalidate; disk-wake semantics unchanged, no extra requests)
 
 Frontend-only release; compose-api is identical to v1.3.0/v1.3.1
@@ -99,8 +98,8 @@ Frontend-only release; compose-api is identical to v1.3.0/v1.3.1
 
 ### Fixed
 
-- Large file downloads on the Shares page always failed: the old 120-second hard timeout was guaranteed to fire on slow external links (a 387 MB file needs ~13 minutes) — replaced with a 30-second stall watchdog with no total time limit
-- Containers/VMs tab took seconds to load on every switch: the page now seeds from the GraphQL cache on mount and renders instantly, refreshing silently in the background (stale-while-revalidate)
+- Shares large-file downloads stalling mid-way: the hard 120s timeout is replaced by a 30s stall watchdog (no total time limit) with resumable downloads (Range / If-Range), so big files survive flaky connections
+- Containers/VM tab took seconds to open: the page now seeds from the GraphQL cache on mount (stale-while-revalidate) and refreshes silently in the background
 
 Frontend-only release; compose-api is identical to v1.3.0
 
@@ -117,11 +116,13 @@ Frontend-only release; compose-api is identical to v1.3.0
 - Destructive compose operations now confirm through a single entry point (the confirmation bar is the only execution path)
 - Settings sections reordered: high-frequency items first
 - Full-disk file index: the toggle now only controls the daily auto build and defaults to off on install (manual rebuild remains available anytime) — **compose-api updated; re-run the install script on the host to upgrade the backend**
+- Deployment script cleanup: removed the broken `deploy-dev.sh` and `deploy-stable.sh --mode dev` image flows (compose runs a different tag, so they never took effect); `build.sh` no longer builds the image/tar that nothing consumed
 
 ### Fixed
 
 - Disk temperature history row: no longer shows a meaningless "42–42°C" range when the temperature is flat — a single value is shown instead
 - Stale badges ("·3h ago") no longer wrap onto two lines on narrow screens
+- `deploy-stable.sh --dry-run` actually performed a real deployment — it now only prints
 
 ## [1.2.9] - 2026-09-19
 
@@ -162,7 +163,7 @@ Frontend-only release; compose-api is identical to v1.3.0
 
 ### Fixed
 
-- Cache-only shares that appear as symlinks under `/mnt/user` (e.g. `strm`, `appdata`, `isos`) were silently skipped by both the index build and the real-time full-disk search — `find` does not follow symlinks by default. Both now follow top-level share symlinks explicitly
+- Cache-only shares that appear as symlinks under `/mnt/user` (e.g. `strm`, `appdata`, `isos`) were silently skipped by both the index build and the real-time full-disk search — `find` does not follow symlinks by default. Both now follow top-level share symlinks explicitly (index grew from 1.35M to 1.59M entries on the reference server)
 
 ## [1.2.6] - 2026-09-18
 
