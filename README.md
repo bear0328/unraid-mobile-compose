@@ -202,6 +202,10 @@ temperature (once Pro is activated) are ready.
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.3.8 (2026-10-17)
+
+- Dashboard CPU/memory card redesign: the per-core CPU bars are replaced by a spec line (model + core count + max/current frequency), and the memory card now always shows vendor/capacity/DDR type/speed plus used/available/cached; Shares overhaul: folders and disks are split into separate tabs, the disks tab shows parity/data/cache-pool/boot drives (without waking spun-down disks), and disks and pools can be browsed read-only with downloads; the native iOS app gains a cold-start snapshot cache (instant render) and a unified search entry at the top of the Dashboard. compose-api is unchanged — no need to re-run the install script; **recreate the container after upgrading** (new read-only /mnt mount; the host log mount moved from /mnt/hostlog to /hostlog)
+
 ### v1.3.7 (2026-10-10)
 
 - iOS look-and-feel overhaul: materials and structure aligned with native iOS — frosted-glass top bar and tab bar (translucent with backdrop blur, content shows through while scrolling), per-page 34pt large titles that collapse on scroll and cross-fade into the nav bar title (iOS Large Title), container/VM/file lists rebuilt as rounded grouped lists with hairline separators, all cards unified to a flat grouped style, and the light background switched to the iOS grouped gray. Bottom sheets and modals now use spring physics animations (honors Reduce Motion); the iOS native shell gains haptic feedback (button taps, refresh completion, destructive-action warnings — requires TestFlight 1.3.7 or later). Frontend-only release: compose-api is identical to v1.3.6, no need to re-run the install script

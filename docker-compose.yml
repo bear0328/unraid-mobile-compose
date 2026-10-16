@@ -18,8 +18,10 @@ services:
       # 文件管理(还需 .davpasswd,见 README 对照表)
       # - /mnt/user:/mnt/user
       # - /mnt/cache:/mnt/cache
+      # 硬盘页签磁盘/缓存池只读浏览(/files/<diskN|pool>/):
+      # - /mnt:/mnt:ro  # ro 不传播新增子挂载,新加盘/池需 recreate 才可见
       # 宿主系统日志(还需 .logpasswd)
-      # - /var/log:/mnt/hostlog:ro
+      # - /var/log:/hostlog:ro
       # Compose 栈管理(还需宿主装 compose-api,见 README)
       # - /var/run/php-fpm.sock:/hostrun/php-fpm.sock
     healthcheck:

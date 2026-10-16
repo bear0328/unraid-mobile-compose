@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.8] - 2026-10-17
+
+### Added
+
+- Dashboard card redesign: the per-core CPU bars are replaced by a spec line (model + N cores + max/current frequency, falling back to the current frequency when the max is unavailable, with de-bouncing for flaky upstream values); the memory card drops its expander and always shows a spec line (normalized vendor + capacity + DDR type + speed, empty slots filtered, lowest speed wins on mixed kits) plus a persistent used/available/cached row; queries that fail on unknown fields now strip those fields and retry automatically (compatible with older unraid-api versions, replacing static fallback queries)
+- Shares overhaul: folders and disks split into separate tabs; the disks tab merges three data layers (parity/data disks with temperature and spin state, cache pools and the boot drive fetched via a dedicated POOLS_QUERY — verified not to wake spun-down array disks); disks and pools can be opened for read-only directory browsing (new read-only /mnt mount + nginx autoindex, ranged/resumable downloads, write operations/upload/edit/share links hidden outside the user root); fixes the 404 when tapping diskN pseudo-shares
+- Native iOS app: cold-start snapshot cache (per-server stale-while-revalidate, cached data renders instantly on launch while refreshing in the background, wired into six pages) and a capsule search entry at the top of the Dashboard (aligned with the Containers page search drawer)
+- Web and iOS both show only the primary NIC in the network section (br0/eth/bond priority) with matching sampling scope
+
+### Changed
+
+- Container compose: new `/mnt:/mnt:ro` read-only mount (for the disks tab; read-only mounts do not propagate new sub-mounts — recreate the container after adding disks/pools), and the host log mount moved from `/mnt/hostlog` to `/hostlog` (docker cannot create sub-mount points under a read-only parent). **Recreate the container after upgrading**; compose-api is unchanged, no need to re-run the install script
+
 ## [1.3.7] - 2026-10-10
 
 ### Added
