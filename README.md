@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.10/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.11/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.10/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.11/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.11 (2026-10-17)
+
+- Log polling is now adaptive to save battery and server resources: container log live-refresh and the system log auto-refresh return to their base interval (5s) whenever new lines arrive, and back off exponentially up to 30s while nothing changes (failures also back off). Short-lived operation polls (compose stack actions, docker image updates) keep their 2s cadence. Frontend-only release: compose-api is unchanged, no need to re-run the install script
 
 ### v1.3.10 (2026-10-17)
 

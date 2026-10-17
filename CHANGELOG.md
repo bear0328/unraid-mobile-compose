@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.11] - 2026-10-17
+
+### Changed
+
+- Log polling is now adaptive to save battery and server resources: container log live-refresh and the system log auto-refresh keep their 5s base interval while new lines arrive, and double the interval up to a 30s cap when nothing changes (failed requests also back off); the cadence resets to the base interval as soon as new content appears. Short-lived operation polls (compose stack actions, docker image updates) are unchanged at 2s. The system log page's raw setInterval polling was folded into the shared poll-loop infrastructure
+
 ## [1.3.10] - 2026-10-17
 
 ### Changed
