@@ -2,6 +2,12 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.9] - 2026-10-17
+
+### 修复
+
+- 容器/虚拟机的停止、重启不再假超时:这类操作在 unraid-api 侧是阻塞型 mutation(实测约 11 秒,服务端会轮询等待目标状态落定),默认 10 秒请求超时会先于动作完成触发——Web 端报失败,但容器其实已停止/重启。操作类 mutation 现改用专用 60 秒超时(`graphql.ts` 新增 `ACTION_TIMEOUT`,应用于 docker stop/restart 与 VM stop/reboot)
+
 ## [1.3.8] - 2026-10-17
 
 ### 新增

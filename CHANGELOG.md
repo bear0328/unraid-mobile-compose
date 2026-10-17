@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.9] - 2026-10-17
+
+### Fixed
+
+- Container and VM stop/restart actions no longer report false timeouts: these are blocking mutations on the unraid-api side (measured at ~11s while the server polls for the target state), so the 10s default request timeout fired before the action finished — the Web UI showed a failure even though the container had actually stopped or restarted. Action mutations now use a dedicated 60s timeout (`ACTION_TIMEOUT` in `graphql.ts`, applied to docker stop/restart and VM stop/reboot)
+
 ## [1.3.8] - 2026-10-17
 
 ### Added
