@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.10] - 2026-10-17
+
+### Changed
+
+- All log views now show the newest line on top (Web and native iOS): container logs, compose stack operation logs, and docker image update logs. Live container log refreshes prepend new lines at the top instead of appending at the bottom, so reading older lines is no longer disturbed by incoming output. The same cursor-based incremental polling and boundary de-duplication are kept, with the merge direction mirrored
+
+### Fixed
+
+- Viewing logs of a container that was deleted or rebuilt (a ghost row restored from the local snapshot cache) showed the raw server error "No such container"; it is now mapped to a readable message. The list refresh self-heals such rows on the Web
+
 ## [1.3.9] - 2026-10-17
 
 ### Fixed

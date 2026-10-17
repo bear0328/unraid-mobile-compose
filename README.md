@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.9/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.10/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.9/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.10/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.10 (2026-10-17)
+
+- All log views now show the newest line on top (Web and native iOS): container logs, compose stack operation logs, and docker image update logs. Live container logs insert new lines at the top without disturbing your scroll position. Container logs for containers that were deleted or rebuilt (ghost rows restored from cache) now show a readable message instead of the raw "No such container" server error. Frontend-only release: compose-api is unchanged, no need to re-run the install script
 
 ### v1.3.9 (2026-10-17)
 
