@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.12] - 2026-10-18
+
+### Fixed
+
+- Image downloads/previews on the Shares page returned 404: the nginx static-asset regex route matched before the /files prefix route, diverting authenticated image requests into the unauthenticated static block; the /files and /config/ prefix locations now use the `^~` priority modifier, which also closes a security bypass where the regex block served images without auth
+- Responses under /config/ now carry `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff` headers, closing an attack surface where a same-origin HTML file uploaded via the backup/restore channel could execute scripts and read the apiKey (all consumers use fetch/DAV calls with no document navigation, so sandbox semantics are safe)
+
 ## [1.3.11] - 2026-10-17
 
 ### Changed

@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.11/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.12/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.11/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.12/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.12 (2026-10-18)
+
+- Fixed image downloads/previews on the Shares page returning 404: the nginx static-asset regex route matched before the /files prefix, diverting authenticated image requests; the /files and /config/ prefix routes now use ^~ priority, which also closes a bypass where the regex block served images without auth. The /config/ directory responses now carry CSP sandbox and nosniff headers, closing an attack surface where an uploaded same-origin HTML file could execute and read the apiKey. compose-api is unchanged — no need to re-run the install script; upgrading requires pulling the new image and recreating the container (the nginx config is baked into the image). The native iOS app (TestFlight 2.0.0 (19)) adds photo-library upload on the Shares page and saving downloads to the photo library
 
 ### v1.3.11 (2026-10-17)
 

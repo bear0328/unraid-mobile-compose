@@ -2,6 +2,13 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.12] - 2026-10-18
+
+### 修复
+
+- 共享页图片下载/预览 404:nginx 静态资源正则路由(`~ \.(jpg|png|...)$` 类)按匹配顺序抢在 /files 前缀路由之前命中,带鉴权的图片请求被分流到无鉴权的静态块;为 /files 与 /config/ 两个 prefix location 补 `^~` 优先级修饰符,顺带堵住了正则块无鉴权直接出图的安全绕过面
+- /config/ 目录响应补 `Content-Security-Policy: sandbox` 与 `X-Content-Type-Options: nosniff` 安全头,堵住经备份/恢复通道上传同源 HTML 后执行脚本读取 apiKey 的攻击面(消费方均为 fetch/DAV 调用,无文档导航,sandbox 语义安全)
+
 ## [1.3.11] - 2026-10-17
 
 ### 变更
