@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.12/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.13/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.12/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.13/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.13 (2026-10-24)
+
+- Added a lightweight compose-api `networkinfo` endpoint that reads `/proc/net/dev` and `/sys/class/net` directly, preventing slow GraphQL network queries from blocking other Dashboard requests. The native iOS Dashboard uses it first and falls back automatically on older hosts. **The host agent changed; re-run the install script after upgrading.** Native iOS (TestFlight 2.0.0 (26)) also aligns the Shares segmented control, search fields, loading/error/filter-empty states, and small-button hit targets
 
 ### v1.3.12 (2026-10-18)
 

@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.13] - 2026-10-24
+
+### Added
+
+- Added a lightweight compose-api `networkinfo` endpoint that reads `/proc/net/dev` and `/sys/class/net` directly without executing external commands or touching block devices. The native iOS Dashboard prefers this endpoint so slow GraphQL network queries no longer block core requests, with automatic fallback for older hosts. **Re-run the install script after upgrading**
+
+### Changed
+
+- Native iOS (TestFlight 2.0.0 (26)): keep the Shares folder/disk segmented control fixed at the top; make container, directory, and system-log search fields consistently visible; add first-load, Chinese filter-empty, and corrected log-error states; bring download, upload, and alert buttons up to 44pt hit targets
+
 ## [1.3.12] - 2026-10-18
 
 ### Fixed

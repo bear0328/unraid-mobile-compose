@@ -25,6 +25,8 @@ declare(strict_types=1);
  *   GET  ?action=cputemp                    CPU 温度(续 51:直读 /sys/class/hwmon CPU 传感器,
  *                                           纯内核 sysfs 不碰 smartctl/块设备,全盘 standby 不唤盘。
  *                                           这是续 46.5 "GraphQL temperature 唤盘红线"的安全替代)
+ *   GET  ?action=networkinfo                网卡状态与累积字节(直读 /proc/net/dev + /sys/class/net,
+ *                                           不执行外部命令,计数字符串防 64 位精度损失)
  *   GET  ?action=vminfo&vm=X                VM 详情增强(续 101:virsh dumpxml/dominfo/
  *                                           snapshot-list + /etc/libvirt/qemu 回退,全只读)
  *   GET  ?action=updates                    有更新的镜像 ref 列表(续 112:直读 unraid-api
@@ -322,6 +324,40 @@ function readCpuTemp(): array
         return ['celsius' => round($max / 1000, 1), 'sensor' => $name . '/max'];
     }
     return ['celsius' => null, 'sensor' => null];
+}
+
+/**
+ * 网卡状态与累积字节:直读 /proc/net/dev 和 /sys/class/net,不执行外部命令。
+ * 响应结构与 GraphQL networkInfo 一致,计数用字符串避免 64 位整数精度损失。
+ */
+function readNetworkInfo(): array
+{
+    $lines = @file('/proc/net/dev', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        fail(500, '无法读取网卡计数');
+    }
+
+    $interfaces = [];
+    $metrics = [];
+    foreach ($lines as $line) {
+        if (!str_contains($line, ':')) {
+            continue;
+        }
+        [$left, $right] = explode(':', $line, 2);
+        $name = trim($left);
+        $fields = preg_split('/\s+/', trim($right));
+        if ($name === '' || count($fields) < 9 || !is_numeric($fields[0]) || !is_numeric($fields[8])) {
+            continue;
+        }
+        $status = trim((string) @file_get_contents('/sys/class/net/' . $name . '/operstate'));
+        $interfaces[] = ['name' => $name, 'status' => $status !== '' ? $status : 'Unknown'];
+        $metrics[] = ['name' => $name, 'bytesReceived' => $fields[0], 'bytesSent' => $fields[8]];
+    }
+
+    return [
+        'info' => ['networkInterfaces' => $interfaces],
+        'metrics' => ['network' => $metrics],
+    ];
 }
 
 /**
@@ -955,6 +991,10 @@ if ($method === 'GET') {
     // 【续 51】CPU 温度(sysfs,不唤盘),放在栈相关 action 之前(不需要 PROJECTS_DIR)
     if ($action === 'cputemp') {
         ok(readCpuTemp());
+    }
+
+    if ($action === 'networkinfo') {
+        ok(readNetworkInfo());
     }
 
     // 【续 101】VM 详情(libvirt XML 只读;vm 名白名单正则,不查项目目录)
