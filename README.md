@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.13/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.14/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.13/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.14/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.14 (2026-10-25)
+
+- Web and native iOS now show update-available counts and support one-click updates: standalone containers update in a batch, while Compose containers are pulled and rebuilt by owning stack with stage progress, failure continuation, and synchronized refreshes. Native iOS also places Containers, Compose, and VMs in that order (TestFlight 2.0.0 (28)). compose-api is unchanged, so no install-script rerun is needed
 
 ### v1.3.13 (2026-10-24)
 

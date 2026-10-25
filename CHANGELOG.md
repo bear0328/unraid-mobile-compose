@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.14] - 2026-10-25
+
+### Added
+
+- Added update-available counts and one-click updates to the Web and native iOS Containers pages. Standalone containers update in one batch, while Compose-managed containers are grouped by stack and pulled/rebuilt sequentially without duplicate updates; includes stage progress, per-stack failure continuation, and synchronized list refreshes
+- Native iOS (TestFlight 2.0.0 (28)) now orders the Containers segments as Containers, Compose, and VMs so related views stay adjacent
+
 ## [1.3.13] - 2026-10-24
 
 ### Added
