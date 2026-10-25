@@ -29,11 +29,9 @@ declare(strict_types=1);
  *                                           不执行外部命令,计数字符串防 64 位精度损失)
  *   GET  ?action=vminfo&vm=X                VM 详情增强(续 101:virsh dumpxml/dominfo/
  *                                           snapshot-list + /etc/libvirt/qemu 回退,全只读)
- *   GET  ?action=updates                    有更新的镜像 ref 列表(续 112:直读 unraid-api
- *                                           更新缓存并剥 library/ 前缀 —— GraphQL
- *                                           isUpdateAvailable 用容器 image 原值查缓存,
- *                                           官方镜像 key 是 library/postgres:18 永远查不到,
- *                                           前端拿本列表兜底)
+ *   GET  ?action=updates                    有更新的镜像 ref 列表(合并 webGui 主缓存与
+ *                                           Compose 补充缓存,剥 library/ 前缀;补充缓存
+ *                                           过期时后台补扫,请求不同步等待 Registry)
  *   GET  ?action=list                       栈列表(名称/状态/autostart/last_result)
  *   GET  ?action=get&name=X                 栈详情(compose.yaml/override/log)
  *   GET  ?action=log&name=X                 操作日志 + 是否有异步任务在跑
@@ -56,8 +54,12 @@ const PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/
 // 【续 50 D3-3】审计日志:敏感动作成败各一行;超过 1MB 轮转为 .old(只留一代,简单)
 const AUDIT_LOG = '/boot/config/plugins/unraid-mobile/audit.log';
 const AUDIT_MAX_BYTES = 1048576;
-// 【续 112】unraid-api 的容器更新状态缓存(webGui dockerupdate cron / DockerUpdate.php 写)
+// 主缓存由 webGui dockerupdate 维护;补充缓存覆盖其未跟踪的 Compose 镜像。
 const UPDATE_STATUS_FILE = '/var/lib/docker/unraid-update-status.json';
+const UPDATE_EXTRA_STATUS_FILE = '/tmp/unraid-mobile-update-status.json';
+const UPDATE_SCAN_LOCK_FILE = '/tmp/unraid-mobile-update-scan.lock';
+const UPDATE_SCAN_INTERVAL = 86400;
+const UPDATE_SCAN_RETRY_INTERVAL = 300;
 
 // 【续 118】缓存池文件搜索:只读 SSD cache 池,不碰 /mnt/user、/mnt/disk*(唤盘红线)
 const CACHE_POOL_DIR = '/mnt/cache';
@@ -514,24 +516,58 @@ function readVmInfo(string $vm): array
 }
 
 /**
- * 【续 112 2026-08-22】有更新的镜像 ref 列表:直读 unraid-api 更新状态缓存。
- * 背景:GraphQL isUpdateAvailable 用容器 image 原值(如 postgres:18)查缓存,
- * 而缓存 key 由 PHP ensureImageTag 归一化(library/postgres:18)→ 官方镜像永远
- * 查不到(null),徽章不显示。本端点剥掉 library/ 前缀返回,前端按 image 直接比对。
- *
- * 【续 112.2】local digest 不再信缓存:PHP reloadUpdateStatus 只在缓存没有 local
- * 时才实测,已有值永久复用 —— 绕开 webGui/compose-api 的镜像更新(watchtower、
- * 手动 docker pull)会让缓存 local 永远冻结,徽章假阴性(msgo 实证:缓存
- * local==remote==旧值,实际 tag 已指向新 digest)。改为每次实测 tag 当前 digest
- * 与缓存 remote 比;缓存 remote 的新鲜度由 webGui dockerupdate cron 保证。
- * 【续 112.3】实测走逐 ref `docker image inspect`(RepoDigests[0],与 webGui
- * inspectLocalVersion 同语义);不用 docker images 行输出(多 RepoDigest 干扰)。
- * 降级:tag 本地不存在(如已删)或 remote 缺失 → 回退缓存原值比对/status 判定。
+ * 补充缓存过期时后台补扫。HTTP 请求只读现有结果,不同步等待 Registry;
+ * flock 防止并发请求启动多个扫描进程,锁文件保留在 tmpfs 中。
+ */
+function scheduleImageUpdateScan(array $extra): void
+{
+    $interval = UPDATE_SCAN_INTERVAL;
+    foreach ($extra as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $remote = $entry['remote'] ?? null;
+        if (!is_string($remote) || $remote === '' || ($entry['status'] ?? null) === 'stale') {
+            $interval = min($interval, UPDATE_SCAN_RETRY_INTERVAL);
+        }
+    }
+    $checkedAt = @filemtime(UPDATE_EXTRA_STATUS_FILE);
+    if ($checkedAt !== false && time() - $checkedAt < $interval) {
+        return;
+    }
+    if (!is_file(__DIR__ . '/update-status.php')) {
+        return;
+    }
+    $lock = @fopen(UPDATE_SCAN_LOCK_FILE, 'c');
+    if ($lock === false) {
+        return;
+    }
+    if (!@flock($lock, LOCK_EX | LOCK_NB)) {
+        @fclose($lock);
+        return;
+    }
+    @flock($lock, LOCK_UN);
+    @fclose($lock);
+    exec(
+        PATH_ENV . ' nohup /usr/bin/php ' . escapeshellarg(__DIR__ . '/update-status.php')
+        . ' --scan > /dev/null 2>&1 &'
+    );
+}
+
+/**
+ * 有更新的镜像 ref 列表:合并 webGui 主缓存与当前容器镜像的补充缓存,主缓存优先。
+ * 返回时剥掉 Docker Hub 官方镜像的 library/ 前缀,与容器 image 原值对齐。
+ * local digest 每次实测,避免手动 pull / Watchtower 后沿用冻结的旧值;
+ * 远端 digest 由每日 webGui 任务和后台补扫维护(成功 24h、失败 5min 重试)。
+ * 本地或远端 digest 缺失时,回退缓存 local/status;unknown 不算有更新。
  */
 function readImageUpdates(): array
 {
-    $data = readJsonFile(UPDATE_STATUS_FILE);
-    if ($data === null) {
+    $base = readJsonFile(UPDATE_STATUS_FILE) ?? [];
+    $extra = readJsonFile(UPDATE_EXTRA_STATUS_FILE) ?? [];
+    $data = array_merge($extra, $base);
+    scheduleImageUpdateScan($extra);
+    if ($data === []) {
         return [];
     }
 

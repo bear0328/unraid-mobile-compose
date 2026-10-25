@@ -1,19 +1,16 @@
 <?php
 /**
- * 【续 68.2 2026-07-28】pull/rebuild 成功后回写 unraid-api 的更新状态缓存
+ * 维护镜像更新状态:
+ * - pull/rebuild 成功后,把主缓存中已有镜像的 local/remote 回写为当前 RepoDigest;
+ * - --scan 补查主缓存未覆盖的当前容器镜像,结果写 /tmp 补充缓存。
  *
- * 背景:/var/lib/docker/unraid-update-status.json 由 unraid-api 的 cron
- * (EVERY_DAY_AT_6AM)重写,GraphQL isUpdateAvailable 直接读这个文件
- * (isUpdateAvailableCached: local!==remote → true)。
- * pull 之后到次日 6AM 之间,文件里还是旧 digest → 前端「更新」徽章残留。
- *
- * 本脚本由 api.php 的后台异步 shell 在 pull/rebuild 成功后调用(php-cli):
- * 对该栈所有镜像,把缓存条目的 local/remote 都写成当前本地 RepoDigest
- * —— pull 刚保证了"本地==远端"这一事实,所以这是真实状态而非粉饰;
- * unraid-api cron 下次运行会重新计算并覆盖。
+ * 主缓存由 webGui dockerupdate 定时任务维护;补充缓存由 api.php 后台扫描,
+ * 成功项每天复查、失败项 5 分钟后重试,避免 HTTP 轮询同步等待 Registry。
+ * 单个镜像查询失败不影响其他镜像;无远端 digest 时不判定有无更新。
  *
  * 用法: php update-status.php <stack_dir>     — compose 栈(pull/rebuild 后)
- *       php update-status.php --image <ref>   — 单镜像(【续 147】docker 容器更新后)
+ *       php update-status.php --image <ref>   — 单镜像容器更新后
+ *       php update-status.php --scan          — 补查主缓存未覆盖的镜像
  * 无参数 / 无镜像 / 状态文件不存在 → 静默 exit 0(绝不影响主流程)
  */
 
@@ -22,6 +19,98 @@ if (PHP_SAPI !== 'cli' || $argc < 2) {
 }
 
 $statusFile = '/var/lib/docker/unraid-update-status.json';
+$extraStatusFile = '/tmp/unraid-mobile-update-status.json';
+$scanLockFile = '/tmp/unraid-mobile-update-scan.lock';
+const SCAN_SUCCESS_TTL = 86400;
+const SCAN_RETRY_TTL = 300;
+
+function scanImageUpdates(string $statusFile, string $extraStatusFile, string $lockFile): void
+{
+    $lock = @fopen($lockFile, 'c');
+    if ($lock === false || !@flock($lock, LOCK_EX | LOCK_NB)) {
+        if (is_resource($lock)) {
+            @fclose($lock);
+        }
+        return;
+    }
+
+    try {
+        $base = json_decode((string) @file_get_contents($statusFile), true);
+        $base = is_array($base) ? $base : [];
+        $previous = json_decode((string) @file_get_contents($extraStatusFile), true);
+        $previous = is_array($previous) ? $previous : [];
+        $lines = [];
+        @exec('/usr/bin/docker ps -a --format ' . escapeshellarg('{{.Image}}') . ' 2>/dev/null', $lines);
+        $targets = [];
+        foreach ($lines as $line) {
+            $image = trim($line);
+            if ($image === '' || str_starts_with($image, 'sha256:')) {
+                continue;
+            }
+            // 纯十六进制镜像 ID 没有可查询的仓库/tag。
+            if (preg_match('/^[a-f0-9]{12,64}$/i', $image)) {
+                continue;
+            }
+            $key = str_contains($image, ':') ? $image : $image . ':latest';
+            if (!str_contains($key, '/')) {
+                $key = 'library/' . $key;
+            }
+            if (!array_key_exists($key, $base)) {
+                $targets[$key] = true;
+            }
+        }
+
+        $extra = [];
+        foreach (array_keys($targets) as $image) {
+            $old = is_array($previous[$image] ?? null) ? $previous[$image] : null;
+            $oldRemote = $old !== null && is_string($old['remote'] ?? null) && $old['remote'] !== ''
+                ? $old['remote']
+                : null;
+            $needsRetry = $oldRemote === null || ($old['status'] ?? null) === 'stale';
+            $ttl = $needsRetry ? SCAN_RETRY_TTL : SCAN_SUCCESS_TTL;
+            $checkedAt = $old !== null && is_int($old['checkedAt'] ?? null) ? $old['checkedAt'] : 0;
+            if ($old !== null && $checkedAt > 0 && time() - $checkedAt < $ttl) {
+                $extra[$image] = $old;
+                continue;
+            }
+
+            $out = [];
+            $exitCode = 0;
+            @exec(
+                'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+                . ' timeout 20 /usr/bin/docker buildx imagetools inspect --raw '
+                . escapeshellarg($image) . ' 2>/dev/null',
+                $out,
+                $exitCode
+            );
+            $raw = implode("\n", $out);
+            $manifest = json_decode($raw, true);
+            $succeeded = $exitCode === 0 && is_array($manifest) && $raw !== '';
+            $remote = $succeeded ? 'sha256:' . hash('sha256', $raw) : $oldRemote;
+            $extra[$image] = [
+                'local' => null,
+                'remote' => $remote,
+                'status' => !$succeeded && $oldRemote !== null ? 'stale' : 'undef',
+                'checkedAt' => time(),
+            ];
+        }
+        ksort($extra);
+        $tmp = $extraStatusFile . '.tmp-' . getmypid();
+        if (@file_put_contents($tmp, json_encode($extra, JSON_PRETTY_PRINT)) !== false) {
+            @rename($tmp, $extraStatusFile);
+        } else {
+            @unlink($tmp);
+        }
+    } finally {
+        @flock($lock, LOCK_UN);
+        @fclose($lock);
+    }
+}
+
+if ($argv[1] === '--scan') {
+    scanImageUpdates($statusFile, $extraStatusFile, $scanLockFile);
+    exit(0);
+}
 
 if (!is_file($statusFile)) {
     exit(0);

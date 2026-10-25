@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.14/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.14/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.15 (2026-10-25)
+
+- Fixed missed Docker and Compose update statuses: compose-api now scans current container images omitted from the primary cache in the background, merges the supplemental cache, and compares live local image digests. Successful checks refresh after 24 hours and failures retry after 5 minutes without blocking container-list polling. Native iOS is also released as TestFlight 2.0.0 (29). **The host agent changed; re-run the install script after upgrading**
 
 ### v1.3.14 (2026-10-25)
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.15] - 2026-10-25
+
+### Fixed
+
+- Fixed permanent update-status omissions for Compose images absent from the webGui cache. A background scan now enumerates current container images, fetches missing remote manifest digests, merges the supplemental cache, and compares live local digests. Successful checks refresh after 24 hours while failures retry after 5 minutes; locking and atomic writes are included, and HTTP polling never waits synchronously on registries. **Re-run the install script after upgrading**
+
 ## [1.3.14] - 2026-10-25
 
 ### Added
