@@ -30,7 +30,7 @@ GraphQL API (7.2+; disk sleep badges and network rate stats require unRAID 7.3+ 
 | Free (works out of the box) | Pro (unlocked with a license key) |
 |------|------|
 | Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (CPU/memory/disks/network/passthrough/snapshots, read from libvirt XML) |
-| Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹ |
+| Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹, **plugin management** (check/install/update/remove, native app)¹ |
 | Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
 | Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, **multi-server**, alert notifications (Webhook), disk cleanup |
 
@@ -146,14 +146,19 @@ services:
     restart: unless-stopped
 ```
 
-## Pro host agent (compose-api): Compose stacks + CPU temperature
+## Pro host agent (compose-api): Compose / plugins / CPU temperature
 
-The Compose tab and CPU temperature (both Pro features) rely on a small host-side component
-(`api.php`, executed as root via the host's php-fpm to run `docker compose` / read
-`/sys/class/hwmon` directly — it never spins up sleeping disks).
+Compose, plugin management, and CPU temperature (all Pro features) rely on a small host-side component
+(`api.php`, executed as root via the host's php-fpm to run `docker compose`, the official `plugin` CLI,
+or read `/sys/class/hwmon` directly).
 Without it, those features show an install guide or a placeholder; **everything else is unaffected**.
 The host agent source is published in [`compose-api/`](compose-api/) so you can audit exactly
 what runs on your server as root.
+
+The native app's "Settings → Plugins" supports installed-plugin lists, manual update checks,
+single/batch updates, HTTPS `.plg` installation, and removal. Jobs run serially in the host background
+with logs. Plugin-author scripts run as root: install only trusted sources. Removal and configuration
+cleanup are defined by each plugin. Community Applications browsing and Unraid OS updates are out of scope.
 
 > ⚠️ **Risk notice (read before installing)**
 > The install script modifies the following persistent host files (all tagged 【unraid-mobile】,
@@ -162,6 +167,7 @@ what runs on your server as root.
 >   is restored after reboots and stale Compose locks are cleaned
 > - `/boot/config/plugins/unraid-mobile/api.php`: flash master of the Pro backend
 >   (Compose / CPU temperature / VM details)
+> - `/boot/config/plugins/unraid-mobile/plugin-worker.php`: flash master of the plugin job worker
 > - `/boot/config/plugins/unraid-mobile/update-status.php`: flash master of the Compose
 >   update-badge write-back script
 > - `/boot/config/plugins/unraid-mobile/apikey`: API key stored as a sha256 hash (mode 600,
@@ -185,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.17/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.17/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +227,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.18 (2026-10-26)
+
+- Native iOS adds Pro plugin management (TestFlight 2.0.0 (31)): installed lists, update checks, single/batch updates, HTTPS `.plg` installation, and removal with background progress, per-item results, and logs. compose-api adds a serial official `plugin` CLI worker with safety validation. **The host agent changed; re-run the install script after upgrading**
 
 ### v1.3.17 (2026-10-25)
 

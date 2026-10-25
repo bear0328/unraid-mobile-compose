@@ -29,7 +29,7 @@ unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正�
 | 免费版(开箱即用) | Pro(License key 解锁) |
 |------|------|
 | 仪表盘全部监控:CPU / 内存 / 网络 / 磁盘 / 阵列 / parity 校验进度 / 历史曲线 / 收藏、unRAID 告警徽章 | 容器 / VM 启停 / 重启 / 暂停 / 恢复操作、**VM 增强详情**¹(CPU/内存/磁盘/网络/直通/快照,读 libvirt XML) |
-| 容器 / VM 列表、容器详情(端口/挂载/网络/磁盘占用)、容器日志、VM 基础详情 | **Compose 栈管理**(列表/日志/up/down/pull/rebuild/yaml 编辑)¹ |
+| 容器 / VM 列表、容器详情(端口/挂载/网络/磁盘占用)、容器日志、VM 基础详情 | **Compose 栈管理**(列表/日志/up/down/pull/rebuild/yaml 编辑)¹、**插件管理**(检查/安装/更新/卸载,原生端)¹ |
 | Shares 文件浏览 / 下载 / 图片预览、磁盘/缓存池只读浏览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
 | 全局搜索、命令面板、配置备份/导入、单服务器、深色主题、PWA | **容器一键更新**(单个/批量,webGui 同款)、**UPS 监控**(电量/续航/负载)、容器批量操作、**多服务器**、告警通知(Webhook)、磁盘清理 |
 
@@ -138,18 +138,23 @@ services:
     restart: unless-stopped
 ```
 
-## Pro 宿主后端(compose-api):Compose 栈管理 + CPU 温度
+## Pro 宿主后端(compose-api):Compose / 插件管理 / CPU 温度
 
-Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api.php`,经宿主 php-fpm
-以 root 执行 `docker compose` / 直读 `/sys/class/hwmon`,不会唤醒休眠硬盘)。
+Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api.php`,经宿主 php-fpm
+以 root 执行 `docker compose` / 官方 `plugin` CLI / 直读 `/sys/class/hwmon`)。
 未安装时对应功能显示安装指引或占位,**其余功能不受影响**。
 宿主后端源码完整公开在 [`compose-api/`](compose-api/),以 root 跑在你服务器上的东西,
 每一行都可以自行审计。
+
+原生端「设置 → 插件管理」支持已安装列表、手动检查更新、单个/全部更新、HTTPS `.plg` 安装与卸载。
+任务在宿主后台串行执行并保留日志。插件作者提供的脚本会以 root 运行;只安装可信来源,
+卸载及配置清理由插件自身定义。Community Applications 市场与 Unraid OS 更新不在此功能范围内。
 
 > ⚠️ **风险说明(安装前必读)**
 > 安装脚本会修改以下持久宿主文件(均带【unraid-mobile】标记,可完整还原):
 > - `/boot/config/go`:开机脚本,追加恢复钩子(6 行),用于重启后恢复 Pro 后端组件、清理 Compose 残留锁
 > - `/boot/config/plugins/unraid-mobile/api.php`:Pro 后端(Compose / CPU 温度 / VM 详情)flash 正本
+> - `/boot/config/plugins/unraid-mobile/plugin-worker.php`:插件后台任务 worker flash 正本
 > - `/boot/config/plugins/unraid-mobile/update-status.php`:Compose 更新徽章回写脚本 flash 正本
 > - `/boot/config/plugins/unraid-mobile/apikey`:API key 的 sha256 哈希(600,明文不落 flash)
 > - `/boot/config/plugins/unraid-mobile/audit.log`:api.php 关键操作审计日志
@@ -169,9 +174,9 @@ Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.17/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.17/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -202,6 +207,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.18(2026-10-26)
+
+- 原生 iOS 新增 Pro 插件管理(TestFlight 2.0.0(31)):已安装列表、检查更新、单个/全部更新、HTTPS `.plg` 安装与卸载,带后台进度、逐项结果和日志;compose-api 新增串行官方 `plugin` CLI worker 与安全校验。**本次后端有更新,升级后需重跑安装脚本**
 
 ### v1.3.17(2026-10-25)
 

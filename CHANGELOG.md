@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.18] - 2026-10-26
+
+### Added
+
+- Native iOS (TestFlight 2.0.0 (31)) adds Pro plugin management: installed-plugin lists, manual update checks, single/batch updates, HTTPS `.plg` installation, and removal, with confirmations, search, background progress, per-item results, collapsible logs, and job reattachment
+- compose-api adds plugin endpoints and a dedicated background worker. All writes serially invoke the official Unraid `plugin` CLI with URL/name validation, Min/Max compatibility checks, auditing, failure continuation, compose.manager removal protection, and backend self-recovery after its update. **Re-run the install script after upgrading**
+
 ## [1.3.17] - 2026-10-25
 
 ### Changed

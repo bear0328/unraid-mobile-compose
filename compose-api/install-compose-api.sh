@@ -16,20 +16,21 @@
 # 它做什么:
 #   1. 校验 compose.manager 插件已安装(Compose 功能的载体)
 #   2. 写 /boot/config/plugins/unraid-mobile/apikey (flash 盘,chmod 600,存 sha256 哈希)
-#   3. 装 api.php 正本到 /boot/config/plugins/unraid-mobile/
-#      并 cp 到执行位置 /usr/local/emhttp/plugins/compose.manager/api.php
+#   3. 装 api.php/plugin-worker.php 正本到 /boot/config/plugins/unraid-mobile/
+#      并 cp 到执行位置 /usr/local/emhttp/plugins/compose.manager/
 #   4. 往 /boot/config/go 加恢复钩子(tmpfs 重启后重建执行位置)
 #
 # 容器侧还需一个挂载(脚本最后会再提示):
 #   -v /var/run/php-fpm.sock:/hostrun/php-fpm.sock
 #
-# api.php 来源: 优先用与本脚本同目录的 api.php;否则从 RAW_URL 下载。
+# api.php/plugin-worker.php 来源: 优先用脚本同目录文件;否则从 RAW_URL 同目录下载并校验 sha256。
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.17/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="62f94c9382221494082c270e73c07da27de297a5f80f556ba1c4ea2e40eb4d43"
+EXPECTED_API_SHA256="946c641b6ee4929187ae1c5a317c3c5929b9fe67bba80c37bd8406bc6f3cbd39"
+EXPECTED_WORKER_SHA256="6367ce8b465bb857011e432e17a6ac107c96ee26d53a3e28894f05578d73dced"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"
 EXEC_DIR="/usr/local/emhttp/plugins/compose.manager"
@@ -99,6 +100,25 @@ php -l "$PLUGIN_DIR/api.php" > /dev/null || die "api.php 语法检查失败,不�
 cp "$PLUGIN_DIR/api.php" "$EXEC_DIR/api.php"
 info "api.php: 正本 $PLUGIN_DIR/api.php → 执行位置 $EXEC_DIR/api.php"
 
+# ---------- 3.1 装 plugin-worker.php ----------
+if [ -f "$SCRIPT_DIR/plugin-worker.php" ]; then
+    cp "$SCRIPT_DIR/plugin-worker.php" "$PLUGIN_DIR/plugin-worker.php"
+    info "plugin-worker.php 来自脚本同目录"
+elif [ -n "$RAW_URL" ]; then
+    WORKER_RAW_URL="${RAW_URL%/*}/plugin-worker.php"
+    curl -fsSL "$WORKER_RAW_URL" -o "$PLUGIN_DIR/plugin-worker.php" || die "下载 plugin-worker.php 失败: $WORKER_RAW_URL"
+    (cd "$PLUGIN_DIR" && echo "$EXPECTED_WORKER_SHA256  plugin-worker.php" | sha256sum -c -) \
+        || die "plugin-worker.php sha256 校验不符(期望 $EXPECTED_WORKER_SHA256),已中止"
+    info "plugin-worker.php 下载自 $WORKER_RAW_URL (sha256 校验通过)"
+else
+    die "脚本同目录没有 plugin-worker.php,且 RAW_URL 未配置"
+fi
+php -l "$PLUGIN_DIR/plugin-worker.php" > /dev/null || die "plugin-worker.php 语法检查失败,不安装"
+chmod 0755 "$PLUGIN_DIR/plugin-worker.php"
+cp "$PLUGIN_DIR/plugin-worker.php" "$EXEC_DIR/plugin-worker.php"
+chmod 0755 "$EXEC_DIR/plugin-worker.php"
+info "plugin-worker.php: 正本 $PLUGIN_DIR/plugin-worker.php → 执行位置 $EXEC_DIR/plugin-worker.php"
+
 # ---------- 3.5 装 update-status.php(续 68.2:pull 成功后回写更新徽章缓存) ----------
 # 老版本发布物里没有这个文件,下载失败只警告不中止(徽章回写失效,主流程不受影响)
 if [ -f "$SCRIPT_DIR/update-status.php" ]; then
@@ -155,6 +175,7 @@ sed -i.unraid-mobile-bak \
     -e '/tmpfs,重启后 api\.php 丢失/d' \
     -e '/compose\.manager\/api\.php/d' \
     -e '/compose\.manager\/update-status\.php/d' \
+    -e '/compose\.manager\/plugin-worker\.php/d' \
     -e '/\.op-running/d' \
     -e '/update-file-index\.sh/d' \
     -e '/register-index-cron\.sh/d' \
@@ -164,6 +185,8 @@ cat >> "$GO_FILE" << 'EOF'
 # /usr/local/emhttp 是 tmpfs,重启后 api.php 丢失,从 flash 正本恢复
 cp /boot/config/plugins/unraid-mobile/api.php /usr/local/emhttp/plugins/compose.manager/api.php 2>/dev/null || true
 cp /boot/config/plugins/unraid-mobile/update-status.php /usr/local/emhttp/plugins/compose.manager/update-status.php 2>/dev/null || true
+cp /boot/config/plugins/unraid-mobile/plugin-worker.php /usr/local/emhttp/plugins/compose.manager/plugin-worker.php 2>/dev/null || true
+chmod 0755 /usr/local/emhttp/plugins/compose.manager/plugin-worker.php 2>/dev/null || true
 # 清 .op-running 残留锁(续 88 2026-08-08):projects 在 flash 盘持久,宿主重启/进程被杀后残留会让该栈永久 409
 rm -f /boot/config/plugins/compose.manager/projects/*/.op-running
 # 【unraid-mobile】文件索引 cron(续 123-125):/var/spool/cron 是 tmpfs,重启重注册;脚本内以 index-enabled flag 为条件、读 index-hour 整点(设置页可配)
@@ -182,7 +205,7 @@ cat << 'EOF'
 
 go 文件备份: /boot/config/go.unraid-mobile-bak(如需还原直接覆盖回去)
 卸载: 删掉 /boot/config/plugins/unraid-mobile/、
-      /usr/local/emhttp/plugins/compose.manager/api.php 和 update-status.php、
+      /usr/local/emhttp/plugins/compose.manager/api.php、update-status.php 和 plugin-worker.php、
       /boot/config/go 里【unraid-mobile】标记的行、
       以及 crontab 里 update-file-index.sh 那行(crontab -l 查看)。
 索引: 每天 03:17 自动构建全盘文件名索引(会唤盘,故排凌晨低峰);

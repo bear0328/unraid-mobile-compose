@@ -32,6 +32,11 @@ declare(strict_types=1);
  *   GET  ?action=updates                    有更新的镜像 ref 列表(合并 webGui 主缓存与
  *                                           Compose 补充缓存,剥 library/ 前缀;补充缓存
  *                                           过期时后台补扫,请求不同步等待 Registry)
+ *   GET  ?action=plugins                    已安装插件与本地检查缓存(不联网)
+ *   GET  ?action=pluginjob&id=X             插件异步任务状态/进度/截尾日志
+ *   PUT  {action: plugincheck|pluginupdateall}
+ *   PUT  {action: pluginupdate|pluginremove, name}
+ *   PUT  {action: plugininstall, url}       均返回 jobId,由独立 worker 串行调用官方 plugin CLI
  *   GET  ?action=list                       栈列表(名称/状态/autostart/last_result)
  *   GET  ?action=get&name=X                 栈详情(compose.yaml/override/log)
  *   GET  ?action=log&name=X                 操作日志 + 是否有异步任务在跑
@@ -88,6 +93,9 @@ const INDEX_CRON_REGISTER = '/boot/config/plugins/unraid-mobile/register-index-c
 const DOCKER_UPDATE_DIR = '/tmp/unraid-mobile-dockerupdate';
 const DOCKER_UPDATE_SCRIPT = '/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container';
 const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
+const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
+const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
+const PLUGIN_INSTALLED_DIR = '/var/log/plugins';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -380,7 +388,7 @@ function readVmInfo(string $vm): array
     if (trim($xml) === '') {
         fail(404, '无法读取 VM XML(virsh 不可用且无配置文件): ' . $vm);
     }
-    $dom = @simplexml_load_string($xml);
+    $dom = @simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET);
     if ($dom === false) {
         fail(500, 'VM XML 解析失败: ' . $vm);
     }
@@ -827,6 +835,223 @@ function runDockerUpdateAsync(string $name, string $tmpl): void
     exec(PATH_ENV . ' nohup bash ' . escapeshellarg($job) . ' > /dev/null 2>&1 &');
 }
 
+// ==================== Unraid 官方插件管理 ====================
+
+function pluginId(mixed $name): string
+{
+    $name = (string) $name;
+    if (
+        !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,123}\.plg$/D', $name)
+        || basename($name) !== $name
+        || str_contains($name, '..')
+    ) {
+        fail(400, '非法插件名');
+    }
+    return $name;
+}
+
+function pluginInstalled(string $id): bool
+{
+    return is_file(PLUGIN_INSTALLED_DIR . '/' . $id);
+}
+
+function operatingSystemPlugin(string $id): bool
+{
+    return in_array(strtolower($id), ['unraidserver.plg', 'unraidserver-.plg'], true);
+}
+
+function pluginManaged(string $id): bool
+{
+    return strtolower($id) !== 'compose.manager.plg' && !operatingSystemPlugin($id);
+}
+
+function pluginXml(string $path): ?SimpleXMLElement
+{
+    $xml = @file_get_contents($path);
+    if ($xml === false || trim($xml) === '') {
+        return null;
+    }
+    $dom = @simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET);
+    return $dom instanceof SimpleXMLElement ? $dom : null;
+}
+
+function pluginCache(): array
+{
+    $cache = readJsonFile(PLUGIN_WORK_DIR . '/cache.json') ?? [];
+    return [
+        'checkedAt' => is_string($cache['checkedAt'] ?? null) ? $cache['checkedAt'] : null,
+        'plugins' => is_array($cache['plugins'] ?? null) ? $cache['plugins'] : [],
+    ];
+}
+
+function writePluginJson(string $path, array $data): void
+{
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        throw new RuntimeException('插件状态编码失败');
+    }
+    $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        throw new RuntimeException('插件状态写入失败');
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('插件状态原子替换失败');
+    }
+}
+
+function readPluginJob(string $id): ?array
+{
+    if (!preg_match('/^[a-f0-9]{32}$/D', $id)) {
+        return null;
+    }
+    $job = readJsonFile(PLUGIN_WORK_DIR . '/' . $id . '.json');
+    if (!is_array($job) || ($job['id'] ?? null) !== $id) {
+        return null;
+    }
+    return [
+        'id' => $id,
+        'operation' => (string) ($job['operation'] ?? ''),
+        'state' => (string) ($job['state'] ?? 'queued'),
+        'current' => (int) ($job['current'] ?? 0),
+        'total' => (int) ($job['total'] ?? 0),
+        'log' => tailFile(PLUGIN_WORK_DIR . '/' . $id . '.log'),
+        'results' => is_array($job['results'] ?? null) ? array_values($job['results']) : [],
+        'error' => is_string($job['error'] ?? null) ? $job['error'] : null,
+    ];
+}
+
+function activePluginJob(): ?array
+{
+    $id = trim((string) @file_get_contents(PLUGIN_WORK_DIR . '/active.lock'));
+    return $id !== '' ? readPluginJob($id) : null;
+}
+
+function listPlugins(): array
+{
+    $cache = pluginCache();
+    $active = activePluginJob();
+    $checking = $active !== null
+        && $active['operation'] === 'plugincheck'
+        && in_array($active['state'], ['queued', 'running'], true);
+    $completed = [];
+    if ($checking) {
+        foreach ($active['results'] as $result) {
+            if (is_array($result) && is_string($result['id'] ?? null)) {
+                $completed[$result['id']] = true;
+            }
+        }
+    }
+
+    $plugins = [];
+    foreach (glob(PLUGIN_INSTALLED_DIR . '/*.plg') ?: [] as $path) {
+        $id = basename($path);
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,123}\.plg$/D', $id) || str_contains($id, '..')) {
+            continue;
+        }
+        $dom = pluginXml($path);
+        $attrs = $dom?->attributes();
+        $name = $attrs !== null ? trim((string) ($attrs['name'] ?? '')) : '';
+        $author = $attrs !== null ? trim((string) ($attrs['author'] ?? '')) : '';
+        $version = $attrs !== null ? trim((string) ($attrs['version'] ?? '')) : '';
+        $pluginUrl = $attrs !== null ? trim((string) ($attrs['pluginURL'] ?? '')) : '';
+        $saved = is_array($cache['plugins'][$id] ?? null) ? $cache['plugins'][$id] : [];
+        $canCheck = $pluginUrl !== '' && !operatingSystemPlugin($id);
+        $status = $canCheck ? (string) ($saved['status'] ?? 'unknown') : 'unsupported';
+        if (!in_array($status, ['unknown', 'checking', 'current', 'updateAvailable', 'incompatible', 'error', 'unsupported'], true)) {
+            $status = 'unknown';
+        }
+        if ($checking && !isset($completed[$id])) {
+            $status = 'checking';
+        }
+        $plugins[] = [
+            'id' => $id,
+            'name' => $name !== '' ? $name : pathinfo($id, PATHINFO_FILENAME),
+            'author' => $author,
+            'version' => $version,
+            'canCheck' => $canCheck,
+            'latestVersion' => is_string($saved['latestVersion'] ?? null) ? $saved['latestVersion'] : null,
+            'status' => $status,
+            'statusMessage' => is_string($saved['statusMessage'] ?? null) ? $saved['statusMessage'] : null,
+            'managed' => pluginManaged($id),
+        ];
+    }
+    usort($plugins, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
+    return ['plugins' => $plugins, 'checkedAt' => $cache['checkedAt'], 'activeJob' => $active];
+}
+
+function validatePluginInstallUrl(mixed $url): array
+{
+    $url = (string) $url;
+    $parts = parse_url($url);
+    if (
+        !is_array($parts)
+        || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || !is_string($parts['host'] ?? null)
+        || $parts['host'] === ''
+        || isset($parts['user'])
+        || isset($parts['pass'])
+        || isset($parts['query'])
+        || isset($parts['fragment'])
+        || !preg_match('/\.plg$/D', (string) ($parts['path'] ?? ''))
+    ) {
+        fail(400, '插件 URL 必须是 HTTPS 且路径以 .plg 结尾,不允许用户信息、query 或 fragment');
+    }
+    $id = pluginId(basename($parts['path']));
+    if (pluginInstalled($id)) {
+        fail(409, '插件已安装,不覆盖: ' . $id);
+    }
+    $safeUrl = 'https://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . $parts['path'];
+    return [$url, $safeUrl, $id];
+}
+
+function startPluginJob(string $operation, array $names = [], ?string $url = null, ?string $safeUrl = null): string
+{
+    if (!is_file(PLUGIN_WORKER)) {
+        fail(503, '插件 worker 未安装,请重跑 install-compose-api.sh');
+    }
+    if (!is_dir(PLUGIN_WORK_DIR) && !@mkdir(PLUGIN_WORK_DIR, 0700, true) && !is_dir(PLUGIN_WORK_DIR)) {
+        fail(500, '插件任务目录创建失败');
+    }
+    @chmod(PLUGIN_WORK_DIR, 0700);
+    $id = bin2hex(random_bytes(16));
+    $lock = @fopen(PLUGIN_WORK_DIR . '/active.lock', 'x');
+    if ($lock === false) {
+        audit($operation, $names[0] ?? '-', 'fail');
+        fail(409, '已有插件任务正在进行中');
+    }
+    if (@fwrite($lock, $id) === false) {
+        fclose($lock);
+        @unlink(PLUGIN_WORK_DIR . '/active.lock');
+        fail(500, '插件任务锁写入失败');
+    }
+    fclose($lock);
+    $job = [
+        'id' => $id,
+        'operation' => $operation,
+        'state' => 'queued',
+        'current' => 0,
+        'total' => count($names),
+        'results' => [],
+        'error' => null,
+        'names' => array_values($names),
+        'url' => $url,
+        'safeUrl' => $safeUrl,
+        'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
+        'createdAt' => date('c'),
+    ];
+    try {
+        writePluginJson(PLUGIN_WORK_DIR . '/' . $id . '.json', $job);
+    } catch (Throwable $e) {
+        @unlink(PLUGIN_WORK_DIR . '/active.lock');
+        fail(500, $e->getMessage());
+    }
+    audit($operation, $safeUrl ?? $names[0] ?? '-', 'queued');
+    exec(PATH_ENV . ' nohup /usr/bin/php ' . escapeshellarg(PLUGIN_WORKER) . ' ' . escapeshellarg($id) . ' > /dev/null 2>&1 &');
+    return $id;
+}
+
 // ---------- 路由 ----------
 
 /**
@@ -1053,6 +1278,19 @@ if ($method === 'GET') {
         ok(readVmInfo($vm));
     }
 
+    if ($action === 'plugins') {
+        ok(listPlugins());
+    }
+
+    if ($action === 'pluginjob') {
+        $id = (string) ($_GET['id'] ?? '');
+        $job = readPluginJob($id);
+        if ($job === null) {
+            fail(404, '插件任务不存在');
+        }
+        ok($job);
+    }
+
     // 【续 112】有更新的镜像 ref 列表(直读更新缓存,剥 library/ 前缀;纯文件读,不唤盘)
     if ($action === 'updates') {
         ok(readImageUpdates());
@@ -1146,6 +1384,37 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         fail(400, '请求体必须是 JSON');
     }
     $action = (string) ($body['action'] ?? '');
+
+    if ($action === 'plugincheck') {
+        $jobId = startPluginJob('plugincheck');
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
+
+    if ($action === 'pluginupdate' || $action === 'pluginremove') {
+        $name = pluginId($body['name'] ?? '');
+        if (!pluginInstalled($name)) {
+            fail(404, '插件未安装: ' . $name);
+        }
+        if ($action === 'pluginremove' && !pluginManaged($name)) {
+            fail(403, '该插件不允许移除');
+        }
+        if ($action === 'pluginupdate' && operatingSystemPlugin($name)) {
+            fail(403, 'Unraid OS 更新不属于插件管理');
+        }
+        $jobId = startPluginJob($action, [$name]);
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
+
+    if ($action === 'pluginupdateall') {
+        $jobId = startPluginJob('pluginupdateall');
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
+
+    if ($action === 'plugininstall') {
+        [$url, $safeUrl, $name] = validatePluginInstallUrl($body['url'] ?? '');
+        $jobId = startPluginJob('plugininstall', [$name], $url, $safeUrl);
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
 
     if ($action === 'autostart') {
         $name = validName($body['name'] ?? '');
