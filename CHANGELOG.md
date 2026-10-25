@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.17] - 2026-10-25
+
+### Changed
+
+- Introduced a minimal Unraid-orange app icon across iOS, Web/PWA, and Docker, combining a phone silhouette with a negative-space U; added 192px/512px PNGs, Apple home-screen artwork, and offline caching
+- Native iOS (TestFlight 2.0.0 (30)) moves one-click updates into a collapsible bottom task panel with per-stack and standalone progress, results, and error summaries; single-container, Compose, and batch-update logs now share collapsible, internally scrolling, newest-first views
+
 ## [1.3.16] - 2026-10-25
 
 ### Fixed

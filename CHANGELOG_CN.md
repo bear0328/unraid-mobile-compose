@@ -2,6 +2,13 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.17] - 2026-10-25
+
+### 变更
+
+- 全端启用 Unraid 橙极简 App Icon,以手机剪影与负形 U 统一 iOS、Web/PWA 和 Docker 视觉识别;补齐 192px/512px PNG、Apple 主屏幕图标与离线缓存
+- 原生 iOS(TestFlight 2.0.0(30))一键更新改为底部可折叠任务面板,分别展示 Compose 栈与普通容器进度、成败和错误摘要;单容器、Compose 与批量更新日志统一折叠展示,支持内部滚动与最新在顶
+
 ## [1.3.16] - 2026-10-25
 
 ### 修复

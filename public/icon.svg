@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#3b82f6"/>
-  <text x="256" y="370" font-size="320" text-anchor="middle" font-family="system-ui">🧲</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#F15A2C"/>
+  <rect x="294" y="112" width="436" height="800" rx="106" fill="#FFFFFF"/>
+  <rect x="460" y="182" width="104" height="18" rx="9" fill="#F15A2C"/>
+  <path d="M394 326V542C394 650 438 704 512 704C586 704 630 650 630 542V326" fill="none" stroke="#F15A2C" stroke-width="72" stroke-linecap="round"/>
 </svg>

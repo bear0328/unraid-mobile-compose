@@ -7,11 +7,11 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/bear0328/unraid-mobile-compose/issues</Support>
-  <Project>https://github.com/bear0328/unraid-mobile-compose</Project>
+  <Support>https://github.com/bear0328/unraid-mobile/issues</Support>
+  <Project>https://github.com/bear0328/unraid-mobile</Project>
   <Overview>移动设备优化的 unRAID 管理面板(仪表盘/容器/VM/Compose/文件/日志)。&#xD;
 免费版开箱即用,Pro(买断 license)解锁容器详情/Compose/CPU 温度等。&#xD;
-文档: https://github.com/bear0328/unraid-mobile-compose &#xD;
+文档: https://github.com/bear0328/unraid-mobile &#xD;
 &#xD;
 注意: 文件管理和系统日志需要先手工创建密码文件(见两个 Password File 配置项描述);
 不需要这两个功能可删除对应配置行。Compose/CPU 温度(Pro)还需在宿主安装 compose-api
@@ -20,12 +20,12 @@
   <!-- 【续 88 2026-08-08】[PORT:x] 按容器端口(Config 的 Target)替换,本模板 Target 是 80 -->
   <WebUI>http://[IP]:[PORT:80]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/templates/unraid-mobile.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/public/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/public/icon-512.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
   <DonateText>喜欢这个项目?购买 Pro 是对开发最直接的支持。</DonateText>
-  <DonateLink>https://github.com/bear0328/unraid-mobile-compose</DonateLink>
+  <DonateLink>https://github.com/bear0328/unraid-mobile</DonateLink>
   <Requires/>
   <Config Name="Web 端口" Target="80" Default="3999" Mode="tcp" Description="访问 http://unRAID-IP:3999" Type="Port" Display="always" Required="true" Mask="false">3999</Config>
   <Config Name="unRAID 地址" Target="UNRAID_UPSTREAM" Default="http://192.168.1.100:8001" Mode="" Description="你的 unRAID webGui 地址(不带尾部斜杠)。填错全部 API 502" Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.100:8001</Config>
