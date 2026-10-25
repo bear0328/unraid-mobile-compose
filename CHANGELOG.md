@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.16] - 2026-10-25
+
+### Fixed
+
+- Fixed update omissions for images already present in the primary cache when its remote digest became stale. The background scan now independently rechecks all current images instead of only cache omissions. Fresh scan results take precedence, while stale or failed checks continue to fall back to the primary cache, preventing images such as msgo from being incorrectly reported as up to date. **Re-run the install script after upgrading**
+
 ## [1.3.15] - 2026-10-25
 
 ### Fixed

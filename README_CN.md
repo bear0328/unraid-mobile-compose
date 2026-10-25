@@ -169,9 +169,9 @@ Compose tab 和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.16/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.16/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -202,6 +202,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.16(2026-10-25)
+
+- 修复 webGui 主缓存远端 digest 假最新导致的 Docker/Compose 更新漏报:后台独立复查全部当前容器镜像,新鲜补扫结果优先,主缓存仅在缺失或查询失败时回退;msgo 等已有缓存但远端长期未更新的镜像现在也能正确显示更新。**本次后端有更新,升级后需重跑安装脚本**
 
 ### v1.3.15(2026-10-25)
 

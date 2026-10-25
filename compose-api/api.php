@@ -555,7 +555,8 @@ function scheduleImageUpdateScan(array $extra): void
 }
 
 /**
- * 有更新的镜像 ref 列表:合并 webGui 主缓存与当前容器镜像的补充缓存,主缓存优先。
+ * 有更新的镜像 ref 列表:合并 webGui 主缓存与当前容器镜像的补充缓存。
+ * 新鲜补扫的远端 digest 优先,主缓存用于补扫缺失或失败时的回退。
  * 返回时剥掉 Docker Hub 官方镜像的 library/ 前缀,与容器 image 原值对齐。
  * local digest 每次实测,避免手动 pull / Watchtower 后沿用冻结的旧值;
  * 远端 digest 由每日 webGui 任务和后台补扫维护(成功 24h、失败 5min 重试)。
@@ -565,7 +566,17 @@ function readImageUpdates(): array
 {
     $base = readJsonFile(UPDATE_STATUS_FILE) ?? [];
     $extra = readJsonFile(UPDATE_EXTRA_STATUS_FILE) ?? [];
-    $data = array_merge($extra, $base);
+    $data = $base;
+    foreach ($extra as $image => $entry) {
+        if (!is_string($image) || !is_array($entry)) {
+            continue;
+        }
+        $remote = $entry['remote'] ?? null;
+        $freshRemote = is_string($remote) && $remote !== '' && ($entry['status'] ?? null) !== 'stale';
+        if (!array_key_exists($image, $data) || $freshRemote) {
+            $data[$image] = $entry;
+        }
+    }
     scheduleImageUpdateScan($extra);
     if ($data === []) {
         return [];

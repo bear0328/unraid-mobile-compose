@@ -2,7 +2,7 @@
 /**
  * 维护镜像更新状态:
  * - pull/rebuild 成功后,把主缓存中已有镜像的 local/remote 回写为当前 RepoDigest;
- * - --scan 补查主缓存未覆盖的当前容器镜像,结果写 /tmp 补充缓存。
+ * - --scan 独立复查全部当前容器镜像,结果写 /tmp 补充缓存。
  *
  * 主缓存由 webGui dockerupdate 定时任务维护;补充缓存由 api.php 后台扫描,
  * 成功项每天复查、失败项 5 分钟后重试,避免 HTTP 轮询同步等待 Registry。
@@ -10,7 +10,7 @@
  *
  * 用法: php update-status.php <stack_dir>     — compose 栈(pull/rebuild 后)
  *       php update-status.php --image <ref>   — 单镜像容器更新后
- *       php update-status.php --scan          — 补查主缓存未覆盖的镜像
+ *       php update-status.php --scan          — 独立复查全部当前镜像
  * 无参数 / 无镜像 / 状态文件不存在 → 静默 exit 0(绝不影响主流程)
  */
 
@@ -24,7 +24,7 @@ $scanLockFile = '/tmp/unraid-mobile-update-scan.lock';
 const SCAN_SUCCESS_TTL = 86400;
 const SCAN_RETRY_TTL = 300;
 
-function scanImageUpdates(string $statusFile, string $extraStatusFile, string $lockFile): void
+function scanImageUpdates(string $extraStatusFile, string $lockFile): void
 {
     $lock = @fopen($lockFile, 'c');
     if ($lock === false || !@flock($lock, LOCK_EX | LOCK_NB)) {
@@ -35,8 +35,6 @@ function scanImageUpdates(string $statusFile, string $extraStatusFile, string $l
     }
 
     try {
-        $base = json_decode((string) @file_get_contents($statusFile), true);
-        $base = is_array($base) ? $base : [];
         $previous = json_decode((string) @file_get_contents($extraStatusFile), true);
         $previous = is_array($previous) ? $previous : [];
         $lines = [];
@@ -55,9 +53,7 @@ function scanImageUpdates(string $statusFile, string $extraStatusFile, string $l
             if (!str_contains($key, '/')) {
                 $key = 'library/' . $key;
             }
-            if (!array_key_exists($key, $base)) {
-                $targets[$key] = true;
-            }
+            $targets[$key] = true;
         }
 
         $extra = [];
@@ -108,7 +104,7 @@ function scanImageUpdates(string $statusFile, string $extraStatusFile, string $l
 }
 
 if ($argv[1] === '--scan') {
-    scanImageUpdates($statusFile, $extraStatusFile, $scanLockFile);
+    scanImageUpdates($extraStatusFile, $scanLockFile);
     exit(0);
 }
 

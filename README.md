@@ -185,9 +185,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.16/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.15/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.16/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -221,6 +221,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.16 (2026-10-25)
+
+- Fixed Docker and Compose update omissions caused by stale remote digests in the webGui cache. The background scan now independently rechecks every current container image; fresh scan results take precedence, while the primary cache is used only when an image is missing or a scan fails. Images such as msgo that were already cached but had an outdated remote digest now correctly show available updates. **The host agent changed; re-run the install script after upgrading**
 
 ### v1.3.15 (2026-10-25)
 
