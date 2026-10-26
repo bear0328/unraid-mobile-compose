@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.20] - 2026-10-26
+
+### Added
+
+- Web and native iOS add VM status overview/filtering, UUID-based static configuration, per-VM CPU/host RSS/Guest memory/disk/network trends, and incremental QEMU/libvirt logs with filtering, pause, and export. Native changes ship in TestFlight 2.0.0 (33)
+- compose-api adds `vmstats` raw counters and `vmlog` byte-cursor reads; `vminfo` supports UUIDs and exposes firmware, machine type, template OS, and actual disk usage. **Re-run the install script after upgrading**
+
+### Changed
+
+- Improved VM batch-action skipping, per-item results, unified refreshes, stale-data visibility, foreground recovery, counter resets, and late-response handling while preserving the 60-second VM-list polling floor
+
 ## [1.3.19] - 2026-10-26
 
 ### Added

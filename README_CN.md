@@ -174,9 +174,9 @@ Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小�
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.20/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.20/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -202,11 +202,16 @@ bash install-compose-api.sh
 |------|------|------|
 | 列表 | ✅ | domains { name, uuid, state } |
 | 启停 | ✅ | mutation |
-| 日志 / 内存 / CPU / 磁盘 / 网络 / 直通 / 快照 | ✅(Pro) | 通过 compose-api / api.php 读取 libvirt XML(GraphQL 无此字段) |
+| 静态配置 | ✅(Pro) | compose-api 读取 libvirt XML：vCPU/内存分配/磁盘/网络/直通/快照/固件 |
+| 实时性能 / QEMU 日志 | ✅(Pro) | compose-api 读取 libvirt domstats 原始计数器与 QEMU/libvirt 日志；仅单 VM 详情按需采样 |
 
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.20(2026-10-26)
+
+- Web 与原生 iOS 升级 VM 控制中心:状态概览与筛选、UUID 静态详情、单 VM CPU/内存/磁盘/网络实时趋势、QEMU/libvirt 增量日志,并优化批量操作与后台恢复;原生版本为 TestFlight 2.0.0(33)。compose-api 新增 VM 指标与日志接口,**升级后需重跑安装脚本**
 
 ### v1.3.19(2026-10-26)
 

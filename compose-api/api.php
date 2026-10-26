@@ -27,8 +27,9 @@ declare(strict_types=1);
  *                                           这是续 46.5 "GraphQL temperature 唤盘红线"的安全替代)
  *   GET  ?action=networkinfo                网卡状态与累积字节(直读 /proc/net/dev + /sys/class/net,
  *                                           不执行外部命令,计数字符串防 64 位精度损失)
- *   GET  ?action=vminfo&vm=X                VM 详情增强(续 101:virsh dumpxml/dominfo/
- *                                           snapshot-list + /etc/libvirt/qemu 回退,全只读)
+ *   GET  ?action=vminfo&vm=UUID             VM 静态配置(libvirt XML,旧名称寻址兼容)
+ *   GET  ?action=vmstats&vm=UUID            VM CPU/内存/磁盘/网络原始计数器(domstats)
+ *   GET  ?action=vmlog&vm=UUID&offset=N     QEMU/libvirt 日志字节游标增量读取(固定目录)
  *   GET  ?action=updates                    有更新的镜像 ref 列表(合并 webGui 主缓存与
  *                                           Compose 补充缓存,剥 library/ 前缀;补充缓存
  *                                           过期时后台补扫,请求不同步等待 Registry)
@@ -380,9 +381,8 @@ function readNetworkInfo(): array
 function readVmInfo(string $vm): array
 {
     $arg = escapeshellarg($vm);
-    // 优先 virsh dumpxml;不可用/返回空 → 回退读 /etc/libvirt/qemu/<vm>.xml
     $xml = (string) @shell_exec(PATH_ENV . ' virsh dumpxml ' . $arg . ' 2>/dev/null');
-    if (trim($xml) === '') {
+    if (trim($xml) === '' && !isVmUuid($vm)) {
         $xml = (string) @file_get_contents('/etc/libvirt/qemu/' . $vm . '.xml');
     }
     if (trim($xml) === '') {
@@ -396,14 +396,14 @@ function readVmInfo(string $vm): array
     $attr = static fn($node, string $name): ?string =>
         isset($node[$name]) ? (string) $node[$name] : null;
 
-    // vcpus:<vcpu> 内容;属性 current 存在时优先(未指定上限场景)
     $vcpus = null;
+    $vcpuMax = null;
     if (isset($dom->vcpu)) {
         $current = $attr($dom->vcpu, 'current');
-        $vcpus = (int) ($current !== null ? $current : (string) $dom->vcpu);
+        $vcpuMax = (int) (string) $dom->vcpu;
+        $vcpus = (int) ($current !== null ? $current : $vcpuMax);
     }
 
-    // memory:<memory>=上限 <currentMemory>=当前,unit 默认 KiB
     $memory = null;
     if (isset($dom->memory)) {
         $memory = [
@@ -413,14 +413,12 @@ function readVmInfo(string $vm): array
         ];
     }
 
-    // autostart:virsh dominfo 的 "Autostart:" 行
     $autostart = null;
     $dominfo = (string) @shell_exec(PATH_ENV . ' virsh dominfo ' . $arg . ' 2>/dev/null');
     if (preg_match('/^Autostart:\s*(\w+)/m', $dominfo, $m)) {
         $autostart = strtolower($m[1]) === 'enable';
     }
 
-    // disks:<disk device='disk'>;大小走 qemu-img info(timeout 5s),失败只返回 path
     $disks = [];
     foreach ($dom->devices->disk ?? [] as $disk) {
         if (($attr($disk, 'device') ?? 'disk') !== 'disk') {
@@ -438,20 +436,21 @@ function readVmInfo(string $vm): array
             'dev' => isset($disk->target) ? $attr($disk->target, 'dev') : null,
             'format' => isset($disk->driver) ? $attr($disk->driver, 'type') : null,
             'size' => null,
+            'actualSize' => null,
         ];
         if ($path !== null && $type === 'file') {
             $imgOut = (string) @shell_exec(
                 PATH_ENV . ' timeout 5 qemu-img info --output json ' . escapeshellarg($path) . ' 2>/dev/null'
             );
             $img = json_decode($imgOut, true);
-            if (is_array($img) && isset($img['virtual-size'])) {
-                $entry['size'] = (int) $img['virtual-size'];
+            if (is_array($img)) {
+                $entry['size'] = isset($img['virtual-size']) ? (int) $img['virtual-size'] : null;
+                $entry['actualSize'] = isset($img['actual-size']) ? (int) $img['actual-size'] : null;
             }
         }
         $disks[] = $entry;
     }
 
-    // interfaces:<interface type='bridge|network'>
     $interfaces = [];
     foreach ($dom->devices->interface ?? [] as $if) {
         $interfaces[] = [
@@ -464,7 +463,6 @@ function readVmInfo(string $vm): array
         ];
     }
 
-    // graphics:<graphics type='vnc|spice'>
     $graphics = null;
     if (isset($dom->devices->graphics)) {
         $g = $dom->devices->graphics;
@@ -478,7 +476,6 @@ function readVmInfo(string $vm): array
         ];
     }
 
-    // hostDevices:<hostdev type='pci|usb'>
     $hostDevices = [];
     foreach ($dom->devices->hostdev ?? [] as $hd) {
         $hdType = $attr($hd, 'type');
@@ -499,7 +496,6 @@ function readVmInfo(string $vm): array
         }
     }
 
-    // snapshots:virsh snapshot-list --name,按行拆分
     $snapshots = [];
     $snapOut = (string) @shell_exec(PATH_ENV . ' virsh snapshot-list ' . $arg . ' --name 2>/dev/null');
     foreach (preg_split('/\r?\n/', trim($snapOut)) ?: [] as $line) {
@@ -509,18 +505,140 @@ function readVmInfo(string $vm): array
         }
     }
 
+    $templateOs = null;
+    if (isset($dom->metadata)) {
+        $template = $dom->metadata->children('http://unraid')->vmtemplate;
+        if (isset($template->attributes()->os)) {
+            $templateOs = (string) $template->attributes()->os;
+        }
+    }
+    $firmware = isset($dom->os) ? $attr($dom->os, 'firmware') : null;
+    if ($firmware === null && isset($dom->os->loader)) {
+        $firmware = (string) $dom->os->loader;
+    }
+
     return [
         'name' => isset($dom->name) ? (string) $dom->name : $vm,
         'uuid' => isset($dom->uuid) ? (string) $dom->uuid : null,
         'vcpus' => $vcpus,
+        'vcpuMax' => $vcpuMax,
         'memory' => $memory,
         'autostart' => $autostart,
+        'firmware' => $firmware,
+        'machine' => isset($dom->os->type) ? $attr($dom->os->type, 'machine') : null,
+        'arch' => isset($dom->os->type) ? $attr($dom->os->type, 'arch') : null,
+        'os' => $templateOs,
         'disks' => $disks,
         'interfaces' => $interfaces,
         'graphics' => $graphics,
         'hostDevices' => $hostDevices,
         'snapshots' => $snapshots,
     ];
+}
+
+function isVmUuid(string $vm): bool
+{
+    return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $vm) === 1;
+}
+
+function readVmStats(string $vm): array
+{
+    $out = (string) @shell_exec(
+        PATH_ENV . ' virsh domstats --raw --cpu-total --balloon --block --interface ' . escapeshellarg($vm) . ' 2>/dev/null'
+    );
+    if (trim($out) === '') {
+        fail(409, '无法读取 VM 运行指标,请确认虚拟机正在运行');
+    }
+    $stats = [];
+    foreach (preg_split('/\r?\n/', $out) ?: [] as $line) {
+        if (preg_match('/^\s*([A-Za-z0-9_.]+)=(.*)$/', $line, $m)) {
+            $stats[$m[1]] = $m[2];
+        }
+    }
+    if (!isset($stats['cpu.time']) || !is_numeric($stats['cpu.time'])) {
+        fail(500, 'VM 指标缺少 cpu.time');
+    }
+    $optionalInt = static fn(string $key): ?int =>
+        isset($stats[$key]) && is_numeric($stats[$key]) ? (int) $stats[$key] : null;
+    $memory = [
+        'current' => $optionalInt('balloon.current'),
+        'max' => $optionalInt('balloon.maximum'),
+        'unit' => 'KiB',
+        'unused' => $optionalInt('balloon.unused'),
+        'available' => $optionalInt('balloon.available'),
+        'usable' => $optionalInt('balloon.usable'),
+        'rss' => $optionalInt('balloon.rss'),
+    ];
+    $networks = [];
+    $netCount = max(0, (int) ($stats['net.count'] ?? 0));
+    for ($i = 0; $i < $netCount; $i++) {
+        $networks[] = [
+            'name' => $stats["net.$i.name"] ?? "net$i",
+            'rxBytes' => $stats["net.$i.rx.bytes"] ?? '0',
+            'txBytes' => $stats["net.$i.tx.bytes"] ?? '0',
+        ];
+    }
+    $disks = [];
+    $blockCount = max(0, (int) ($stats['block.count'] ?? 0));
+    for ($i = 0; $i < $blockCount; $i++) {
+        $disks[] = [
+            'name' => $stats["block.$i.name"] ?? "disk$i",
+            'path' => $stats["block.$i.path"] ?? null,
+            'readBytes' => $stats["block.$i.rd.bytes"] ?? '0',
+            'writeBytes' => $stats["block.$i.wr.bytes"] ?? '0',
+        ];
+    }
+    return [
+        'sampledAt' => (int) floor(microtime(true) * 1000),
+        'cpuTimeNs' => $stats['cpu.time'],
+        'memory' => $memory,
+        'networks' => $networks,
+        'disks' => $disks,
+    ];
+}
+
+function readVmLog(string $vm, int $offset): array
+{
+    $name = trim((string) @shell_exec(PATH_ENV . ' virsh domname ' . escapeshellarg($vm) . ' 2>/dev/null'));
+    if ($name === '' || basename($name) !== $name || str_contains($name, "\0")) {
+        fail(404, '找不到 VM 或 QEMU 日志名称');
+    }
+    $path = '/var/log/libvirt/qemu/' . $name . '.log';
+    if (!is_file($path)) {
+        fail(404, 'QEMU/libvirt 日志不存在');
+    }
+    clearstatcache(true, $path);
+    $size = filesize($path);
+    if ($size === false) {
+        fail(500, '无法读取 QEMU/libvirt 日志大小');
+    }
+    $maxBytes = 262144;
+    $reset = $offset < 0 || $offset > $size;
+    $start = $reset ? max(0, $size - $maxBytes) : $offset;
+    $length = min($maxBytes, $size - $start);
+    $content = '';
+    if ($length > 0) {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            fail(500, '无法打开 QEMU/libvirt 日志');
+        }
+        try {
+            if (fseek($handle, $start) !== 0) {
+                fail(500, '无法定位 QEMU/libvirt 日志');
+            }
+            $content = fread($handle, $length);
+            if ($content === false) {
+                fail(500, '无法读取 QEMU/libvirt 日志');
+            }
+        } finally {
+            fclose($handle);
+        }
+    }
+    $nextOffset = $start + strlen($content);
+    if ($reset && $start > 0 && ($newline = strpos($content, "\n")) !== false) {
+        $content = substr($content, $newline + 1);
+    }
+    return ['content' => $content, 'offset' => $nextOffset, 'size' => $size, 'reset' => $reset];
 }
 
 /**
@@ -1269,13 +1387,32 @@ if ($method === 'GET') {
         ok(readNetworkInfo());
     }
 
-    // 【续 101】VM 详情(libvirt XML 只读;vm 名白名单正则,不查项目目录)
     if ($action === 'vminfo') {
         $vm = (string) ($_GET['vm'] ?? '');
-        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/', $vm)) {
-            fail(400, '非法 VM 名');
+        if (!isVmUuid($vm) && !preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/', $vm)) {
+            fail(400, '非法 VM UUID 或名称');
         }
         ok(readVmInfo($vm));
+    }
+
+    if ($action === 'vmstats') {
+        $vm = (string) ($_GET['vm'] ?? '');
+        if (!isVmUuid($vm)) {
+            fail(400, '非法 VM UUID');
+        }
+        ok(readVmStats($vm));
+    }
+
+    if ($action === 'vmlog') {
+        $vm = (string) ($_GET['vm'] ?? '');
+        $offset = filter_var($_GET['offset'] ?? -1, FILTER_VALIDATE_INT);
+        if (!isVmUuid($vm)) {
+            fail(400, '非法 VM UUID');
+        }
+        if ($offset === false || $offset < -1) {
+            fail(400, '非法日志游标');
+        }
+        ok(readVmLog($vm, $offset));
     }
 
     if ($action === 'plugins') {

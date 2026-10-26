@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.20/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.20/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -222,11 +222,16 @@ temperature (once Pro is activated) are ready.
 |------|------|------|
 | List | ✅ | domains { name, uuid, state } |
 | Start/stop | ✅ | mutation |
-| Logs / memory / CPU / disks / network / passthrough / snapshots | ✅ (Pro) | Read from libvirt XML via compose-api / api.php (no such GraphQL fields) |
+| Static configuration | ✅ (Pro) | libvirt XML via compose-api: vCPU/memory allocation/disks/network/passthrough/snapshots/firmware |
+| Live metrics / QEMU logs | ✅ (Pro) | libvirt domstats counters and QEMU/libvirt logs via compose-api; sampling only in the visible single-VM details view |
 
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.20 (2026-10-26)
+
+- Upgraded the VM control center on Web and native iOS: status overview/filtering, UUID-based static details, per-VM CPU/memory/disk/network trends, incremental QEMU/libvirt logs, and improved batch actions and lifecycle handling. Native changes ship in TestFlight 2.0.0 (33). compose-api adds VM metrics and log endpoints; **re-run the install script after upgrading**
 
 ### v1.3.19 (2026-10-26)
 
