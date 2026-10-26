@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.18/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.19/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -227,6 +227,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.19 (2026-10-26)
+
+- Web adds Pro plugin management with dedicated lists/details, update checks, single/batch updates, HTTPS `.plg` install/removal, background progress, and per-item logs. Settings links to it and Dashboard only shows update reminders. Updates, Compose, downloads, and uploads now run inline across the app; ordinary feedback no longer obscures content and destructive confirmations use a unified Modal. Native interactions ship in TestFlight 2.0.0 (32). compose-api is unchanged from v1.3.18, so no install-script rerun is needed
 
 ### v1.3.18 (2026-10-26)
 

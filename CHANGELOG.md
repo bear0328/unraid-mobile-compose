@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.19] - 2026-10-26
+
+### Added
+
+- Web adds Pro plugin management with dedicated lists/details, update checks, single/batch updates, HTTPS `.plg` install/removal, inline background jobs, per-item results, collapsible logs, and job reattachment. Settings shows counts and Dashboard only displays update reminders without adding background polling. compose-api is unchanged from v1.3.18, so no install-script rerun is needed
+
+### Changed
+
+- Unified task and dialog interactions across Web and native iOS: container, Compose, plugin, download, and upload jobs now show inline progress and logs; ordinary results appear in the page flow, destructive actions use native alerts or a unified Modal, and custom floating task cards, browser confirm/alert calls, and hand-written modal shells were removed. Native interactions ship in TestFlight 2.0.0 (32)
+
 ## [1.3.18] - 2026-10-26
 
 ### Added
