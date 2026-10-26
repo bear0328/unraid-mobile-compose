@@ -44,7 +44,7 @@ declare(strict_types=1);
  *   PUT  {action: up|down|restart, name}    同步执行(快操作) — Content-Type: application/json
  *   PUT  {action: pull|rebuild, name}       异步执行(慢操作,前端轮询 log)
  *   PUT  {action: autostart, name, value}   value = "true"|"false"
- *   PUT  {action: diskwake}               显式唤醒已确认休眠的阵列数据 HDD(判定只读 emhttp
+ *   PUT  {action: diskwake}               显式唤醒已确认休眠的阵列磁盘(HDD/SSD)(判定只读 emhttp
  *                                           状态文件,起转走官方 emcmd cmdSpinup;不用 SMART、不读块设备)
  *   PUT  ?name=X   body=compose.yaml 内容    tmp+校验+rename 原子写入,失败原文件不动(留 bak 双保险)
  *
@@ -1245,22 +1245,19 @@ function readDiskStateIni(): ?array
 }
 
 /**
- * 选目标盘:必须同时满足 —— 阵列数据盘(type=Data)、机械盘(rotational=1)、
+ * 选目标盘:必须同时满足 —— 阵列数据/校验盘(type=Data|Parity)、
  * 当前已停转(spundown=1)、状态 DISK_OK、有设备名(device 非空)、
- * 盘名形如 diskN(N≥1)。parity/cache/flash/正在转的盘一律排除。
+ * 盘名形如 diskN 或 parity/parityN。HDD/SSD 均包含;cache/flash/未分配/禁用/正在转的盘排除。
  */
 function diskWakeTargets(array $sections): array
 {
     $targets = [];
     foreach ($sections as $section => $slot) {
         $name = trim((string) ($slot['name'] ?? $section));
-        if (!preg_match('/^disk[1-9][0-9]*$/', $name)) {
+        if (!preg_match('/^(?:disk[1-9][0-9]*|parity[0-9]*)$/', $name)) {
             continue;
         }
-        if (strcasecmp(trim((string) ($slot['type'] ?? '')), 'Data') !== 0) {
-            continue;
-        }
-        if (!in_array(strtolower(trim((string) ($slot['rotational'] ?? ''))), ['1', 'true'], true)) {
+        if (!in_array(strtolower(trim((string) ($slot['type'] ?? ''))), ['data', 'parity'], true)) {
             continue;
         }
         // spundown=1 = 当前已停转(unraid-api 同口径:spundown==='0' 才是在转)
@@ -1333,7 +1330,7 @@ function checkArrayReady(): void
 }
 
 /**
- * 磁盘唤醒:只对「已确认休眠」的阵列数据机械盘发官方 emcmd cmdSpinup,
+ * 磁盘唤醒:对阵列内已分配且状态正常的休眠盘(HDD/SSD)发官方 emcmd cmdSpinup,
  * 全部提交后每秒重读一次 emhttp 状态文件确认起转,最多等 DISK_WAKE_WAIT_SEC 秒。
  * 单盘命令失败记进 failures 后继续;等待超时也返回结构化结果(前端继续刷新)。
  */
@@ -1882,7 +1879,7 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         ok(['async' => true]);
     }
 
-    // 磁盘唤醒(显式触发):只唤醒已确认休眠的阵列数据 HDD,起转走官方 emcmd
+    // 磁盘唤醒(显式触发):只唤醒已确认休眠的阵列磁盘(HDD/SSD),起转走官方 emcmd
     if ($action === 'diskwake') {
         ok(runDiskWake());
     }

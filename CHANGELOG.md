@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.24] - 2026-10-26
+
+### Fixed
+
+- Corrected Wake and Refresh targeting and messaging: every assigned, healthy sleeping array disk is included, covering data and parity disks across HDDs and SSDs. Unassigned or disabled disks and array-external cache/boot devices remain excluded. Sleeping SSDs are no longer skipped with a misleading no-target message. compose-api is updated, so **re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (37)
+
 ## [1.3.23] - 2026-10-26
 
 ### Added

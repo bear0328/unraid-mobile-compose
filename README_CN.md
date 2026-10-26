@@ -174,9 +174,9 @@ Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小�
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.24(2026-10-26)
+
+- 修正「唤醒并刷新」范围:对阵列内所有已分配且状态正常的休眠盘生效,包含数据盘、校验盘、HDD 和 SSD;未分配、禁用盘及阵列外 cache/boot 不处理。修复休眠 SSD 被错误排除的问题。compose-api 已更新,**升级后需重跑安装脚本**。原生版本为 TestFlight 2.0.0(37)
 
 ### v1.3.23(2026-10-26)
 
