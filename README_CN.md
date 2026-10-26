@@ -174,9 +174,9 @@ Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小�
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.23(2026-10-26)
+
+- Web 与原生 iOS 新增独立「唤醒并刷新」:普通刷新读取 Unraid 已有数据,显式唤醒只针对休眠的阵列机械数据盘,经官方 `emcmd` 执行并展示逐盘结果。compose-api 新增 `diskwake`,**升级后需重跑安装脚本**。原生统一容器、VM、Compose、文件、通知与插件为点行进详情管理,移除列表省略号、长按和滑动单项操作。原生版本为 TestFlight 2.0.0(36)
 
 ### v1.3.22(2026-10-26)
 

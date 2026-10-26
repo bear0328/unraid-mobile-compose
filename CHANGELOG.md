@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.23] - 2026-10-26
+
+### Added
+
+- Web and native iOS add an explicit Wake and Refresh action. Normal refresh reads Unraid's cached data without actively spinning up disks; wake only targets sleeping array HDD data disks through official `emcmd cmdSpinup`, with a 30-second total wait and per-disk results. compose-api adds `diskwake` with strict disk selection, locking, preconditions, and auditing. **Re-run the install script after upgrading**
+
+### Changed
+
+- Native containers, VMs, Compose, files, notifications, and plugins now consistently open details for item management. Row ellipsis menus, long-press menus, and swipe actions were removed while multi-select, batch operations, and sorting/filtering toolbars remain. Native changes ship in TestFlight 2.0.0 (36)
+
 ## [1.3.22] - 2026-10-26
 
 ### Changed

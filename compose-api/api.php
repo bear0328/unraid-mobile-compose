@@ -44,6 +44,8 @@ declare(strict_types=1);
  *   PUT  {action: up|down|restart, name}    同步执行(快操作) — Content-Type: application/json
  *   PUT  {action: pull|rebuild, name}       异步执行(慢操作,前端轮询 log)
  *   PUT  {action: autostart, name, value}   value = "true"|"false"
+ *   PUT  {action: diskwake}               显式唤醒已确认休眠的阵列数据 HDD(判定只读 emhttp
+ *                                           状态文件,起转走官方 emcmd cmdSpinup;不用 SMART、不读块设备)
  *   PUT  ?name=X   body=compose.yaml 内容    tmp+校验+rename 原子写入,失败原文件不动(留 bak 双保险)
  *
  * 注意: 写操作必须用 PUT 不能用 POST — php.ini auto_prepend_file(local_prepend.php)
@@ -97,6 +99,18 @@ const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
 const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
 const PLUGIN_INSTALLED_DIR = '/var/log/plugins';
+
+// 磁盘唤醒(显式触发):判定只读 emhttp 状态文件,不跑 SMART/hdparm/dd/mdcmd、不读块设备,
+// 所以「读状态」这一步本身不会唤醒任何盘;只有用户显式调用才发起起转。
+const DISKS_INI_FILE = '/usr/local/emhttp/state/disks.ini';
+const ARRAY_VAR_FILE = '/var/local/emhttp/var.ini';
+const DISK_WAKE_LOCK_FILE = '/tmp/unraid-mobile-diskwake.lock';
+const EMCMD = '/usr/local/sbin/emcmd';
+// 单条 emcmd 的兜底超时(emhttp 忙时不让整个请求挂死)
+const DISK_WAKE_CMD_TIMEOUT_SEC = 5;
+// 全部提交后最多等 30s(每秒重读一次状态文件),整体请求上限 45s
+const DISK_WAKE_WAIT_SEC = 30;
+const DISK_WAKE_TIME_LIMIT_SEC = 45;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -1170,6 +1184,291 @@ function startPluginJob(string $operation, array $names = [], ?string $url = nul
     return $id;
 }
 
+// ---------- 磁盘唤醒 ----------
+
+/**
+ * 解析 emhttp 的 ini 状态文件(段落 + key="value"),返回 [段名 => [键 => 值]]。
+ * 段名去引号、键名统一小写、值去引号;注释行与空行跳过。
+ */
+function parseStateIni(string $raw): array
+{
+    $sections = [];
+    $current = '';
+    foreach (preg_split('/\r\n|\r|\n/', $raw) as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, ';') || str_starts_with($line, '#')) {
+            continue;
+        }
+        if (preg_match('/^\[(.*)\]$/', $line, $m)) {
+            $current = trim(trim($m[1]), "\"'");
+            if (!isset($sections[$current])) {
+                $sections[$current] = [];
+            }
+            continue;
+        }
+        if (preg_match('/^([A-Za-z0-9_.-]+)\s*=\s*(.*)$/', $line, $m)) {
+            $value = trim($m[2]);
+            if (strlen($value) >= 2
+                && (($value[0] === '"' && str_ends_with($value, '"'))
+                    || ($value[0] === "'" && str_ends_with($value, "'")))) {
+                $value = substr($value, 1, -1);
+            }
+            $sections[$current][strtolower($m[1])] = $value;
+        }
+    }
+    return $sections;
+}
+
+/** 在 ini 状态里取值(根段优先,其次任意段);没有则 null */
+function stateIniValue(array $sections, string $key): ?string
+{
+    $key = strtolower($key);
+    if (isset($sections[''][$key])) {
+        return (string) $sections[''][$key];
+    }
+    foreach ($sections as $slot) {
+        if (isset($slot[$key])) {
+            return (string) $slot[$key];
+        }
+    }
+    return null;
+}
+
+/** 读 emhttp 磁盘状态文件(纯文件读);读不到返回 null(由调用方决定报错口径) */
+function readDiskStateIni(): ?array
+{
+    $raw = @file_get_contents(DISKS_INI_FILE);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+    return parseStateIni($raw);
+}
+
+/**
+ * 选目标盘:必须同时满足 —— 阵列数据盘(type=Data)、机械盘(rotational=1)、
+ * 当前已停转(spundown=1)、状态 DISK_OK、有设备名(device 非空)、
+ * 盘名形如 diskN(N≥1)。parity/cache/flash/正在转的盘一律排除。
+ */
+function diskWakeTargets(array $sections): array
+{
+    $targets = [];
+    foreach ($sections as $section => $slot) {
+        $name = trim((string) ($slot['name'] ?? $section));
+        if (!preg_match('/^disk[1-9][0-9]*$/', $name)) {
+            continue;
+        }
+        if (strcasecmp(trim((string) ($slot['type'] ?? '')), 'Data') !== 0) {
+            continue;
+        }
+        if (!in_array(strtolower(trim((string) ($slot['rotational'] ?? ''))), ['1', 'true'], true)) {
+            continue;
+        }
+        // spundown=1 = 当前已停转(unraid-api 同口径:spundown==='0' 才是在转)
+        $spundown = strtolower(trim((string) ($slot['spundown'] ?? '')));
+        if ($spundown !== '1' && $spundown !== 'true') {
+            continue;
+        }
+        if (strcasecmp(trim((string) ($slot['status'] ?? '')), 'DISK_OK') !== 0) {
+            continue;
+        }
+        $device = trim((string) ($slot['device'] ?? ''));
+        if ($device === '') {
+            continue;
+        }
+        $targets[] = ['name' => $name, 'device' => $device];
+    }
+    usort(
+        $targets,
+        static fn(array $a, array $b): int => (int) substr($a['name'], 4) <=> (int) substr($b['name'], 4)
+    );
+    return $targets;
+}
+
+/** 当前转动状态:name => 是否已在转(spundown=0);字段缺失按未知处理(算未在转) */
+function diskSpinState(array $sections): array
+{
+    $state = [];
+    foreach ($sections as $section => $slot) {
+        $name = trim((string) ($slot['name'] ?? $section));
+        if ($name === '') {
+            continue;
+        }
+        $spundown = strtolower(trim((string) ($slot['spundown'] ?? '')));
+        $state[$name] = $spundown === '0' || $spundown === 'false';
+    }
+    return $state;
+}
+
+/**
+ * 前置条件(emhttp 数组状态 var.ini):
+ * fsState 必须 Started(数组在跑)、mdResync 必须 0(不在同步);
+ * spinupGroups=yes 时官方按组起转,会连带唤醒本次目标之外的盘 → 直接拒绝(409)。
+ */
+function checkArrayReady(): void
+{
+    $raw = @file_get_contents(ARRAY_VAR_FILE);
+    if (!is_string($raw) || trim($raw) === '') {
+        audit('diskwake', '-', 'fail');
+        fail(503, '无法读取数组状态文件: ' . ARRAY_VAR_FILE);
+    }
+    $var = parseStateIni($raw);
+
+    $fsState = trim((string) stateIniValue($var, 'fsState'));
+    if (strcasecmp($fsState, 'Started') !== 0) {
+        audit('diskwake', '-', 'fail');
+        fail(409, '数组未处于运行状态(fsState=' . ($fsState !== '' ? $fsState : '-') . '),拒绝唤醒磁盘');
+    }
+
+    $mdResync = trim((string) stateIniValue($var, 'mdResync'));
+    if ($mdResync === '' || (float) $mdResync !== 0.0) {
+        audit('diskwake', '-', 'fail');
+        fail(409, '阵列正在同步或同步状态未知(mdResync=' . ($mdResync !== '' ? $mdResync : '-') . '),拒绝唤醒磁盘');
+    }
+
+    $spinupGroups = strtolower(trim((string) stateIniValue($var, 'spinupGroups')));
+    if ($spinupGroups === 'yes' || $spinupGroups === 'true' || $spinupGroups === '1') {
+        audit('diskwake', '-', 'fail');
+        fail(409, '已启用磁盘分组启动(spinupGroups=yes),会连带唤醒范围外磁盘,已拒绝');
+    }
+}
+
+/**
+ * 磁盘唤醒:只对「已确认休眠」的阵列数据机械盘发官方 emcmd cmdSpinup,
+ * 全部提交后每秒重读一次 emhttp 状态文件确认起转,最多等 DISK_WAKE_WAIT_SEC 秒。
+ * 单盘命令失败记进 failures 后继续;等待超时也返回结构化结果(前端继续刷新)。
+ */
+function runDiskWake(): array
+{
+    set_time_limit(DISK_WAKE_TIME_LIMIT_SEC);
+
+    // 前置条件与目标选取都在锁外做(纯读状态文件,无副作用)
+    checkArrayReady();
+    $sections = readDiskStateIni();
+    if ($sections === null) {
+        audit('diskwake', '-', 'fail');
+        fail(503, '无法读取磁盘状态文件: ' . DISKS_INI_FILE);
+    }
+    $targets = diskWakeTargets($sections);
+    if ($targets === []) {
+        audit('diskwake', '-', 'ok');
+        return [
+            'targets' => [],
+            'woken' => [],
+            'pending' => [],
+            'failures' => [],
+            'timedOut' => false,
+            'complete' => true,
+        ];
+    }
+
+    // 互斥:同一时刻只允许一个唤醒流程在跑(flock 非阻塞,撞锁直接 409)
+    $lock = @fopen(DISK_WAKE_LOCK_FILE, 'c');
+    if ($lock === false) {
+        audit('diskwake', '-', 'fail');
+        fail(503, '无法创建唤醒锁文件: ' . DISK_WAKE_LOCK_FILE);
+    }
+    if (!@flock($lock, LOCK_EX | LOCK_NB)) {
+        @fclose($lock);
+        audit('diskwake', '-', 'fail');
+        fail(409, '已有磁盘唤醒任务在执行,请稍后重试');
+    }
+
+    try {
+        // 锁内按最新状态重选,避免等待锁期间其他客户端已改变盘态。
+        $sections = readDiskStateIni();
+        if ($sections === null) {
+            audit('diskwake', '-', 'fail');
+            fail(503, '无法读取磁盘状态文件: ' . DISKS_INI_FILE);
+        }
+        $targets = diskWakeTargets($sections);
+        if ($targets === []) {
+            audit('diskwake', '-', 'ok');
+            return [
+                'targets' => [], 'woken' => [], 'pending' => [], 'failures' => [],
+                'timedOut' => false, 'complete' => true,
+            ];
+        }
+
+        // 命令提交与状态等待共享 30 秒总预算,多盘慢响应也不能突破客户端超时。
+        $deadline = time() + DISK_WAKE_WAIT_SEC;
+        $failures = [];
+        foreach ($targets as $target) {
+            $remaining = $deadline - time();
+            if ($remaining <= 0) {
+                break;
+            }
+            $name = $target['name'];
+            $out = [];
+            $code = 1;
+            $commandTimeout = min(DISK_WAKE_CMD_TIMEOUT_SEC, max(1, $remaining));
+            @exec(
+                PATH_ENV . ' timeout ' . $commandTimeout . ' ' . EMCMD
+                . ' cmdSpinup=' . escapeshellarg($name) . ' 2>&1',
+                $out,
+                $code
+            );
+            if ($code !== 0) {
+                $failures[] = [
+                    'name' => $name,
+                    'device' => $target['device'],
+                    'exitCode' => $code,
+                    'error' => mb_substr(trim(implode(' ', $out)), 0, 200),
+                ];
+            }
+        }
+
+        $spun = [];
+        $woken = [];
+        $pending = [];
+        $timedOut = false;
+        while (true) {
+            $fresh = readDiskStateIni();
+            if ($fresh !== null) {
+                $spun = diskSpinState($fresh);
+            }
+            $woken = [];
+            $pending = [];
+            foreach ($targets as $target) {
+                if (!empty($spun[$target['name']])) {
+                    $woken[] = $target['name'];
+                } else {
+                    $pending[] = $target['name'];
+                }
+            }
+            if ($pending === []) {
+                break;
+            }
+            if (time() >= $deadline) {
+                $timedOut = true;
+                break;
+            }
+            sleep(1);
+        }
+
+        // emcmd 提交可能因起转等待超时返回非零,但 emhttp 随后仍完成唤醒;
+        // 最终只把等待结束仍未起转的盘计为失败,不以提交退出码覆盖真实盘态。
+        $failures = array_values(array_filter(
+            $failures,
+            static fn(array $failure): bool => in_array($failure['name'], $pending, true)
+        ));
+
+        $detail = mb_substr(implode(',', array_column($targets, 'name')), 0, 64);
+        audit('diskwake', $detail, ($failures === [] && !$timedOut) ? 'ok' : 'fail');
+
+        return [
+            'targets' => array_column($targets, 'name'),
+            'woken' => $woken,
+            'pending' => $pending,
+            'failures' => $failures,
+            'timedOut' => $timedOut,
+            'complete' => $pending === [] && $failures === [],
+        ];
+    } finally {
+        @flock($lock, LOCK_UN);
+        @fclose($lock);
+    }
+}
+
 // ---------- 路由 ----------
 
 /**
@@ -1581,6 +1880,11 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         exec(PATH_ENV . ' nohup sh ' . escapeshellarg(INDEX_BUILDER) . ' > /dev/null 2>&1 &');
         audit('reindex', '-', 'ok');
         ok(['async' => true]);
+    }
+
+    // 磁盘唤醒(显式触发):只唤醒已确认休眠的阵列数据 HDD,起转走官方 emcmd
+    if ($action === 'diskwake') {
+        ok(runDiskWake());
     }
 
     // 【续 147】docker 容器更新(异步带 pull 进度;替代无进度的 GraphQL updateContainer)

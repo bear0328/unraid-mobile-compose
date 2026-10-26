@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.23/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.23 (2026-10-26)
+
+- Web and native iOS add an explicit Wake and Refresh action. Normal refresh reads Unraid's cached data, while wake only targets sleeping array HDD data disks through the official `emcmd` path and reports per-disk results. compose-api adds `diskwake`; **re-run the install script after upgrading**. Native containers, VMs, Compose, files, notifications, and plugins now consistently open details for item management, removing row ellipsis, long-press, and swipe actions. Native changes ship in TestFlight 2.0.0 (36)
 
 ### v1.3.22 (2026-10-26)
 
