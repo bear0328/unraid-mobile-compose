@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.21/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.21/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.22/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.22 (2026-10-26)
+
+- Web and native iOS Dashboard now show array data-disk totals, used/free space, and weighted utilization. Native disk details are collapsed by default and collapse again after a successful refresh. Stale sleeping indicators are fixed by querying lightweight spin status after disk details complete, without adding automatic disk wakeups. Native changes ship in TestFlight 2.0.0 (35). compose-api is unchanged, so no install-script rerun is needed
 
 ### v1.3.21 (2026-10-26)
 

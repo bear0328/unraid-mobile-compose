@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.22] - 2026-10-26
+
+### Changed
+
+- Web and native iOS Dashboard now summarize array data-disk capacity, used space, free space, and weighted utilization. Native disk details are collapsed by default, can be expanded on demand, and collapse again after a successful refresh. Native changes ship in TestFlight 2.0.0 (35)
+
+### Fixed
+
+- Fixed stale sleeping indicators after an explicit disk refresh. A non-waking lightweight status query now runs after disk details complete, so the latest sleeping/spinning state wins. compose-api is unchanged, so no install-script rerun is needed
+
 ## [1.3.21] - 2026-10-26
 
 ### Changed
