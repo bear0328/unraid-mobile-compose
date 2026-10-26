@@ -2,6 +2,12 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.21] - 2026-10-26
+
+### 变更
+
+- 全端 App Icon 统一为 Unraid 官方红橙渐变圆形底与白色条形标志,中央叠加粗线手机 U 形,覆盖原生 iOS、Web/PWA 和 Docker;原生版本为 TestFlight 2.0.0(34)。compose-api 无变化,无需重跑安装脚本
+
 ## [1.3.20] - 2026-10-26
 
 ### 新增

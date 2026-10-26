@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.21] - 2026-10-26
+
+### Changed
+
+- Unified the app icon across native iOS, Web/PWA, and Docker: the official Unraid red-orange gradient circle and white bar mark now include a bold phone-shaped U overlay. Native changes ship in TestFlight 2.0.0 (34). compose-api is unchanged, so no install-script rerun is needed
+
 ## [1.3.20] - 2026-10-26
 
 ### Added
