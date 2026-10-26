@@ -146,9 +146,9 @@ Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小�
 宿主后端源码完整公开在 [`compose-api/`](compose-api/),以 root 跑在你服务器上的东西,
 每一行都可以自行审计。
 
-原生端「设置 → 插件管理」支持已安装列表、手动检查更新、单个/全部更新、HTTPS `.plg` 安装与卸载。
-任务在宿主后台串行执行并保留日志。插件作者提供的脚本会以 root 运行;只安装可信来源,
-卸载及配置清理由插件自身定义。Community Applications 市场与 Unraid OS 更新不在此功能范围内。
+Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `.plg` 插件安装及官方 Docker 模板安装。
+插件任务在宿主后台串行执行并保留日志。插件作者提供的脚本会以 root 运行;只安装可信来源,
+卸载及配置清理由插件自身定义。Unraid OS 更新不在此功能范围内。
 
 > ⚠️ **风险说明(安装前必读)**
 > 安装脚本会修改以下持久宿主文件(均带【unraid-mobile】标记,可完整还原):
@@ -174,9 +174,9 @@ Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小�
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.25(2026-10-27)
+
+- 双端新增 CA 应用市场、官方 Docker 模板安装、Parity 校验控制和 Pro 电源操作；文件预览覆盖图片、视频和 PDF。原生新增 App 锁与可恢复的后台上传中心，原生版本为 TestFlight 2.0.0(38)
+- 修复 Compose 更新徽章反复出现、唤醒后休眠状态被旧快照覆盖，以及多服务器和异步任务的竞态问题。compose-api 已更新，**升级后需重跑安装脚本**
 
 ### v1.3.24(2026-10-26)
 

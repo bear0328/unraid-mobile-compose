@@ -1,7 +1,7 @@
 <?php
 /**
  * 维护镜像更新状态:
- * - pull/rebuild 成功后,把主缓存中已有镜像的 local/remote 回写为当前 RepoDigest;
+ * - pull/rebuild 成功后,把主缓存已有项和补充缓存的 local/remote 回写为当前 RepoDigest;
  * - --scan 独立复查全部当前容器镜像,结果写 /tmp 补充缓存。
  *
  * 主缓存由 webGui dockerupdate 定时任务维护;补充缓存由 api.php 后台扫描,
@@ -11,7 +11,7 @@
  * 用法: php update-status.php <stack_dir>     — compose 栈(pull/rebuild 后)
  *       php update-status.php --image <ref>   — 单镜像容器更新后
  *       php update-status.php --scan          — 独立复查全部当前镜像
- * 无参数 / 无镜像 / 状态文件不存在 → 静默 exit 0(绝不影响主流程)
+ * 无参数 / 无镜像 → 静默 exit 0;主缓存缺失或损坏时仍同步补充缓存(绝不影响主流程)
  */
 
 if (PHP_SAPI !== 'cli' || $argc < 2) {
@@ -23,6 +23,43 @@ $extraStatusFile = '/tmp/unraid-mobile-update-status.json';
 $scanLockFile = '/tmp/unraid-mobile-update-scan.lock';
 const SCAN_SUCCESS_TTL = 86400;
 const SCAN_RETRY_TTL = 300;
+
+function syncExtraImageUpdates(string $extraStatusFile, string $lockFile, array $digests): void
+{
+    if ($digests === []) {
+        return;
+    }
+    $lock = @fopen($lockFile, 'c');
+    if ($lock === false || !@flock($lock, LOCK_EX)) {
+        if (is_resource($lock)) {
+            @fclose($lock);
+        }
+        return;
+    }
+
+    try {
+        $extra = json_decode((string) @file_get_contents($extraStatusFile), true);
+        $extra = is_array($extra) ? $extra : [];
+        foreach ($digests as $image => $digest) {
+            $extra[$image] = [
+                'local' => $digest,
+                'remote' => $digest,
+                'status' => 'undef',
+                'checkedAt' => time(),
+            ];
+        }
+        ksort($extra);
+        $tmp = $extraStatusFile . '.tmp-' . getmypid();
+        if (@file_put_contents($tmp, json_encode($extra, JSON_PRETTY_PRINT)) !== false) {
+            @rename($tmp, $extraStatusFile);
+        } else {
+            @unlink($tmp);
+        }
+    } finally {
+        @flock($lock, LOCK_UN);
+        @fclose($lock);
+    }
+}
 
 function scanImageUpdates(string $extraStatusFile, string $lockFile): void
 {
@@ -108,10 +145,6 @@ if ($argv[1] === '--scan') {
     exit(0);
 }
 
-if (!is_file($statusFile)) {
-    exit(0);
-}
-
 $images = [];
 if ($argv[1] === '--image') {
     // 【续 147】单镜像模式:ref 为空静默退出
@@ -135,12 +168,11 @@ if (!$images) {
     exit(0);
 }
 
-$data = json_decode((string) file_get_contents($statusFile), true);
-if (!is_array($data)) {
-    exit(0);
-}
+$data = json_decode((string) @file_get_contents($statusFile), true);
+$data = is_array($data) ? $data : [];
 
 $changed = false;
+$currentDigests = [];
 foreach ($images as $img) {
     // 缓存文件 key 格式是 repo:tag(无 tag 补 :latest)
     $key = str_contains($img, ':') ? $img : $img . ':latest';
@@ -150,9 +182,6 @@ foreach ($images as $img) {
     // pull 后陈旧 local!=remote 条目残留 → 徽章不消
     if (!str_contains($key, '/')) {
         $key = 'library/' . $key;
-    }
-    if (!isset($data[$key]) || !is_array($data[$key])) {
-        continue;
     }
     // 当前本地 RepoDigest(形如 repo@sha256:...;本地构建/无 digest 的镜像跳过)
     $out = [];
@@ -170,7 +199,9 @@ foreach ($images as $img) {
     if ($digest === '') {
         continue;
     }
-    if (($data[$key]['local'] ?? null) !== $digest || ($data[$key]['remote'] ?? null) !== $digest) {
+    $currentDigests[$key] = $digest;
+    if (isset($data[$key]) && is_array($data[$key])
+        && (($data[$key]['local'] ?? null) !== $digest || ($data[$key]['remote'] ?? null) !== $digest)) {
         $data[$key]['local'] = $digest;
         $data[$key]['remote'] = $digest;
         $changed = true;
@@ -183,4 +214,5 @@ if ($changed) {
     file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT));
     @rename($tmp, $statusFile);
 }
+syncExtraImageUpdates($extraStatusFile, $scanLockFile, $currentDigests);
 exit(0);

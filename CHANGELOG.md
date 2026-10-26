@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.25] - 2026-10-27
+
+### Added
+
+- Web and native iOS add Community Applications browsing, search, categories, and details, plus HTTPS `.plg` plugin installation and official Docker template installation. Template URLs must match the current official feed; only new containers are allowed, and masked template defaults never reach the frontend
+- Both clients add read-only/correcting Parity checks, pause, resume, cancel, and live progress, plus Pro reboot/shutdown actions with two-step confirmations. The backend uses an operation allowlist and auditing, and explicitly reports an unknown outcome when acceptance cannot be confirmed
+- Both clients preview images, videos, and PDFs. Native uses QuickLook, on-demand thumbnails, and a background upload center with a persistent queue, a fixed background session, and cold-start task reconciliation
+- Native adds an optional App Lock using Face ID, Touch ID, or the device passcode, with immediate privacy covering in the background. Native changes ship in TestFlight 2.0.0 (38)
+
+### Fixed
+
+- Fixed recurring Compose update badges caused by stale remote digests in the supplemental cache. Pull/rebuild now synchronizes both caches, with locking to prevent scans from overwriting updates
+- Fixed stale disk snapshots overriding successful wake results. Explicit wake results take precedence, while post-action refresh, request generations, cross-server isolation, and asynchronous job reattachment are handled consistently
+- Improved state consistency across notifications, logs, file indexing, configuration backup, upload completion, and license device identity. compose-api is updated, so **re-run the install script after upgrading**
+
 ## [1.3.24] - 2026-10-26
 
 ### Fixed

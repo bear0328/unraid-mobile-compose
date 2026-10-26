@@ -35,6 +35,12 @@ declare(strict_types=1);
  *                                           过期时后台补扫,请求不同步等待 Registry)
  *   GET  ?action=plugins                    已安装插件与本地检查缓存(不联网)
  *   GET  ?action=pluginjob&id=X             插件异步任务状态/进度/截尾日志
+ *   GET  ?action=caapps&refresh=0|1         CA 应用商店目录(只读):官方 feed 白名单字段 + /tmp 短缓存
+ *   GET  ?action=catemplate&url=X           feed 白名单内 Docker 模板;mask 配置不回传默认值
+ *   GET  ?action=cajob&id=X                 CA 安装任务 running/log/result(严格任务 ID)
+ *   PUT  {action:cainstall,templateUrl,values}
+ *                                          重新校验 feed 与模板,仅新容器;独立 PHP worker 设置 $_POST
+ *                                          并 include 官方 CreateDocker.php,最终按同名容器存在判成功
  *   PUT  {action: plugincheck|pluginupdateall}
  *   PUT  {action: pluginupdate|pluginremove, name}
  *   PUT  {action: plugininstall, url}       均返回 jobId,由独立 worker 串行调用官方 plugin CLI
@@ -46,6 +52,11 @@ declare(strict_types=1);
  *   PUT  {action: autostart, name, value}   value = "true"|"false"
  *   PUT  {action: diskwake}               显式唤醒已确认休眠的阵列磁盘(HDD/SSD)(判定只读 emhttp
  *                                           状态文件,起转走官方 emcmd cmdSpinup;不用 SMART、不读块设备)
+ *   PUT  {action: serverpower, operation: reboot|shutdown}
+ *                                          服务器重启/关机(高危不可逆):严格白名单,除 action/operation
+ *                                          外任何额外参数都拒绝;审计先写,再用 nohup 异步下发官方
+ *                                          WebGUI 同款 /sbin/reboot -n 或 /sbin/poweroff -n,
+ *                                          立即返回 {accepted:true,operation},不等待断线
  *   PUT  ?name=X   body=compose.yaml 内容    tmp+校验+rename 原子写入,失败原文件不动(留 bak 双保险)
  *
  * 注意: 写操作必须用 PUT 不能用 POST — php.ini auto_prepend_file(local_prepend.php)
@@ -99,6 +110,37 @@ const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
 const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
 const PLUGIN_INSTALLED_DIR = '/var/log/plugins';
+// ---------- CA 应用商店(Community Applications feed)只读代理 ----------
+// 只读语义:拉官方 feed → 白名单归一化 → 本地缓存。不执行 feed 里的任何脚本,
+// 不安装任何应用(安装仍走 Unraid 官方 plugin CLI / Docker 官方路径,不在本端点内)。
+const CA_APPS_FEED_URL = 'https://ca.unraid.net/assets/feed/applicationFeed.json';
+// 缓存只允许落在 /tmp/unraid-mobile-plugins/(tmpfs,重启自清零,不占 flash)
+const CA_APPS_CACHE_FILE = PLUGIN_WORK_DIR . '/caapps.json';
+// 短 TTL:避免每次刷新都拉远端约 20MB 的 feed
+const CA_APPS_CACHE_TTL = 1800;
+// 大小上限 32MB(实测 feed 约 20MB;超出即判失败,不吃磁盘也不吃内存)
+const CA_APPS_MAX_BYTES = 33554432;
+const CA_APPS_CONNECT_TIMEOUT_SEC = 10;
+const CA_APPS_TOTAL_TIMEOUT_SEC = 60;
+const CA_TEMPLATE_MAX_BYTES = 2097152;
+const CA_CREATE_DOCKER = '/usr/local/emhttp/plugins/dynamix.docker.manager/include/CreateDocker.php';
+const CA_INSTALL_LOCK = PLUGIN_WORK_DIR . '/cainstall.lock';
+// 描述纯文本长度上限
+const CA_APPS_DESC_MAX = 1200;
+// 响应字段白名单:只有这些键能出现在 apps[] 里
+const CA_APPS_FIELDS = [
+    'id', 'name', 'description', 'icon', 'categories', 'author', 'repository',
+    'pluginUrl', 'templateUrl', 'installed', 'type', 'support', 'project',
+];
+// 已安装 Docker 模板目录(只读扫描,用于保守判断安装态)
+const DOCKER_TEMPLATE_COMMUNITY_DIR = '/boot/config/plugins/dockerMan/templates-community';
+// 服务器电源(高危不可逆):operation → 固定命令的严格白名单表。
+// 命令与官方 WebGUI 同款(/sbin/reboot -n、/sbin/poweroff -n);用户输入只做表键查表,
+// 绝不拼进 shell 命令行 —— 表里没有的 operation 一律拒绝。
+const SERVER_POWER_COMMANDS = [
+    'reboot' => '/sbin/reboot -n',
+    'shutdown' => '/sbin/poweroff -n',
+];
 
 // 磁盘唤醒(显式触发):判定只读 emhttp 状态文件,不跑 SMART/hdparm/dd/mdcmd、不读块设备,
 // 所以「读状态」这一步本身不会唤醒任何盘;只有用户显式调用才发起起转。
@@ -1113,6 +1155,1059 @@ function listPlugins(): array
     return ['plugins' => $plugins, 'checkedAt' => $cache['checkedAt'], 'activeJob' => $active];
 }
 
+// ---------- CA 应用商店(只读) ----------
+// feed 官方地址体积约 20MB、顶层 applist 约 5000 条;插件项带 Plugin=true 与 PluginURL,
+// 其余项带 Name/Repository/TemplateURL/Icon/Overview/CategoryList/Repo/Author/Support/Project。
+
+/** 只保留 http/https 绝对 URL(挡 javascript:/data:/file: 等伪协议) */
+function caAppsUrl(string $raw): string
+{
+    $url = trim($raw);
+    if ($url === '' || !preg_match('#^https?://#i', $url)) {
+        return '';
+    }
+    return $url;
+}
+
+/** 任意富文本 → 纯文本:先整块去掉 script/style/iframe 等,再 strip_tags,解实体,压空白,限长 */
+function caAppsPlainText(string $raw): string
+{
+    $text = preg_replace('#<(script|style|iframe|object|embed)[^>]*>.*?</\1>#is', ' ', $raw) ?? '';
+    $text = strip_tags($text);
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $text) ?? $text;
+    $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+    $text = trim($text);
+    if (mb_strlen($text) > CA_APPS_DESC_MAX) {
+        $text = mb_substr($text, 0, CA_APPS_DESC_MAX);
+    }
+    return $text;
+}
+
+/** 分类:数组或分隔字符串 → 去重字符串数组(上限 12 项,单项 ≤64 字符) */
+function caAppsCategories(mixed $raw): array
+{
+    if (is_array($raw)) {
+        $list = $raw;
+    } elseif (is_string($raw)) {
+        $list = preg_split('/[,;|]/', $raw) ?: [];
+    } else {
+        $list = [];
+    }
+    $out = [];
+    foreach ($list as $category) {
+        if (!is_string($category) && !is_numeric($category)) {
+            continue;
+        }
+        $category = caAppsPlainText((string) $category);
+        if ($category === '') {
+            continue;
+        }
+        if (mb_strlen($category) > 64) {
+            $category = mb_substr($category, 0, 64);
+        }
+        if (!in_array($category, $out, true)) {
+            $out[] = $category;
+        }
+        if (count($out) >= 12) {
+            break;
+        }
+    }
+    return $out;
+}
+
+/** 名称键:只留字母数字并小写(容器名 / 模板名 / 插件名匹配用) */
+function caAppsKey(string $raw): string
+{
+    return strtolower(preg_replace('/[^A-Za-z0-9]+/', '', $raw) ?? '');
+}
+
+/** 仓库键:去协议、去 registry 前缀、去 tag/摘要,小写 */
+function caAppsRepoKey(string $raw): string
+{
+    $repo = trim($raw);
+    if ($repo === '') {
+        return '';
+    }
+    $repo = preg_replace('#^[a-z][a-z0-9+.-]*://#i', '', $repo) ?? $repo;
+    $repo = preg_replace('#^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:\d+)?/#', '', $repo) ?? $repo;
+    $repo = preg_replace('/@sha256:[0-9a-f]+$/i', '', $repo) ?? $repo;
+    $repo = preg_replace('/:[A-Za-z0-9._-]+$/', '', $repo) ?? $repo;
+    return strtolower(trim($repo, '/'));
+}
+
+/** 稳定 id:插件取 PluginURL 文件名,其余取 Repo/Repository/Name;最后兜底内容哈希 */
+function caAppsId(array $item, bool $isPlugin): string
+{
+    $raw = '';
+    if ($isPlugin) {
+        $raw = (string) ($item['PluginURL'] ?? '');
+        if ($raw !== '') {
+            $path = (string) parse_url($raw, PHP_URL_PATH);
+            $base = basename($path);
+            if ($base !== '') {
+                $raw = $base;
+            }
+        }
+        if ($raw === '') {
+            $raw = (string) ($item['Name'] ?? '');
+        }
+    } else {
+        foreach (['Repo', 'Repository', 'Name'] as $key) {
+            $value = trim((string) ($item[$key] ?? ''));
+            if ($value !== '') {
+                $raw = $value;
+                break;
+            }
+        }
+    }
+    $raw = preg_replace('/\.plg$/i', '', $raw) ?? $raw;
+    $id = strtolower(preg_replace('/[^A-Za-z0-9._-]+/', '-', $raw) ?? '');
+    $id = trim($id, '-._');
+    if ($id === '') {
+        $id = 'app-' . substr(hash('sha256', (string) json_encode($item)), 0, 16);
+    }
+    return $id;
+}
+
+/** feed 单条 → 内部记录(白名单字段 + 内部 repo 键;repo 只留在缓存里,不进响应) */
+function caAppsRecord(array $item): ?array
+{
+    $pluginRaw = $item['Plugin'] ?? false;
+    $isPlugin = $pluginRaw === true
+        || $pluginRaw === 1
+        || $pluginRaw === '1'
+        || strtolower((string) $pluginRaw) === 'true';
+    $name = trim((string) ($item['Name'] ?? ''));
+    if ($name === '') {
+        return null;
+    }
+    $description = trim((string) ($item['Description'] ?? ''));
+    if ($description === '') {
+        $description = (string) ($item['Overview'] ?? '');
+    }
+    $repo = trim((string) ($item['Repo'] ?? ''));
+    $record = [
+        'id' => caAppsId($item, $isPlugin),
+        'name' => $name,
+        'description' => caAppsPlainText($description),
+        'icon' => caAppsUrl((string) ($item['Icon'] ?? '')),
+        'categories' => caAppsCategories($item['CategoryList'] ?? null),
+        'author' => caAppsPlainText((string) ($item['Author'] ?? '')),
+        'repository' => caAppsUrl((string) ($item['Repository'] ?? '')),
+        'pluginUrl' => $isPlugin ? caAppsUrl((string) ($item['PluginURL'] ?? '')) : '',
+        'templateUrl' => caAppsUrl((string) ($item['TemplateURL'] ?? '')),
+        'installed' => false,
+        'type' => $isPlugin ? 'plugin' : 'docker',
+        'support' => caAppsUrl((string) ($item['Support'] ?? '')),
+        'project' => caAppsUrl((string) ($item['Project'] ?? '')),
+        'repo' => $repo,
+    ];
+    return $record;
+}
+
+/** 已安装状态上下文:插件 .plg、运行/停止的容器、已装 Docker 模板(全部只读) */
+function caAppsInstalledContext(): array
+{
+    $plugins = [];
+    $pluginNames = [];
+    foreach (glob(PLUGIN_INSTALLED_DIR . '/*.plg') ?: [] as $path) {
+        $id = basename($path);
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,123}\.plg$/D', $id)) {
+            continue;
+        }
+        $plugins[caAppsKey(pathinfo($id, PATHINFO_FILENAME))] = true;
+        $dom = pluginXml($path);
+        $attrs = $dom?->attributes();
+        $name = $attrs !== null ? trim((string) ($attrs['name'] ?? '')) : '';
+        if ($name !== '') {
+            $pluginNames[caAppsKey($name)] = true;
+        }
+    }
+
+    $images = [];
+    $containers = [];
+    $lines = [];
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' ps -a --format ' . escapeshellarg('{{.Names}}|{{.Image}}') . ' 2>/dev/null',
+        $lines
+    );
+    foreach ($lines as $line) {
+        $parts = explode('|', trim($line), 2);
+        if (count($parts) !== 2) {
+            continue;
+        }
+        $image = caAppsRepoKey($parts[1]);
+        if ($image !== '') {
+            $images[$image] = true;
+        }
+        $container = caAppsKey($parts[0]);
+        if ($container !== '') {
+            $containers[$container] = true;
+        }
+    }
+
+    $templates = [];
+    $templateNames = [];
+    foreach ([TEMPLATE_USER_DIR, DOCKER_TEMPLATE_COMMUNITY_DIR] as $dir) {
+        foreach (glob($dir . '/*.xml') ?: [] as $path) {
+            $dom = pluginXml($path);
+            if ($dom === null) {
+                continue;
+            }
+            $repo = caAppsRepoKey((string) ($dom->Repository ?? ''));
+            if ($repo !== '') {
+                $templates[$repo] = true;
+            }
+            $name = caAppsKey((string) ($dom->Name ?? ''));
+            if ($name !== '') {
+                $templateNames[$name] = true;
+            }
+        }
+    }
+
+    return [
+        'plugins' => $plugins,
+        'pluginNames' => $pluginNames,
+        'images' => $images,
+        'containers' => $containers,
+        'templates' => $templates,
+        'templateNames' => $templateNames,
+    ];
+}
+
+/**
+ * 是否已安装:只认明确证据(插件 id/名称精确命中、容器镜像仓库精确命中、
+ * 容器名精确命中、已装模板仓库/名称精确命中),拿不准一律 false,不误报。
+ */
+function caAppsInstalled(string $id, string $name, string $repo, bool $isPlugin, array $ctx): bool
+{
+    $nameKey = caAppsKey($name);
+    if ($isPlugin) {
+        if (caAppsKey($id) !== '' && isset($ctx['plugins'][caAppsKey($id)])) {
+            return true;
+        }
+        return $nameKey !== '' && mb_strlen($nameKey) >= 3 && isset($ctx['pluginNames'][$nameKey]);
+    }
+    $repoKey = caAppsRepoKey($repo);
+    if ($repoKey !== '') {
+        if (isset($ctx['images'][$repoKey]) || isset($ctx['templates'][$repoKey])) {
+            return true;
+        }
+    }
+    if ($nameKey !== '' && mb_strlen($nameKey) >= 3) {
+        if (isset($ctx['containers'][$nameKey]) || isset($ctx['templateNames'][$nameKey])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** 内部记录 → 响应记录:严格只复制白名单字段,并按当前状态算 installed */
+function caAppsApplyInstalled(array $records, array $ctx): array
+{
+    $out = [];
+    foreach ($records as $record) {
+        if (!is_array($record)) {
+            continue;
+        }
+        $isPlugin = (string) ($record['type'] ?? '') === 'plugin';
+        $installed = caAppsInstalled(
+            (string) ($record['id'] ?? ''),
+            (string) ($record['name'] ?? ''),
+            (string) ($record['repo'] ?? ''),
+            $isPlugin,
+            $ctx
+        );
+        $item = [];
+        foreach (CA_APPS_FIELDS as $field) {
+            if ($field === 'installed') {
+                $item[$field] = $installed;
+                continue;
+            }
+            $value = $record[$field] ?? null;
+            if ($field === 'categories') {
+                $item[$field] = is_array($value) ? array_values($value) : [];
+                continue;
+            }
+            $item[$field] = is_string($value) ? $value : '';
+        }
+        $out[] = $item;
+    }
+    return $out;
+}
+
+/** 读缓存:null = 无可用缓存;否则 ['cachedAt'=>int,'records'=>array] */
+function caAppsReadCache(): ?array
+{
+    $raw = readJsonFile(CA_APPS_CACHE_FILE);
+    if (!is_array($raw)) {
+        return null;
+    }
+    $cachedAt = (int) ($raw['cachedAt'] ?? 0);
+    $records = is_array($raw['records'] ?? null) ? array_values($raw['records']) : [];
+    if ($cachedAt <= 0 || $records === []) {
+        return null;
+    }
+    return ['cachedAt' => $cachedAt, 'records' => $records];
+}
+
+/** 原子写缓存:同目录 tmp + rename;失败不影响旧缓存 */
+function caAppsWriteCache(int $cachedAt, array $records): bool
+{
+    $dir = dirname(CA_APPS_CACHE_FILE);
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        return false;
+    }
+    $json = json_encode(
+        ['cachedAt' => $cachedAt, 'records' => $records],
+        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+    );
+    if ($json === false) {
+        return false;
+    }
+    $tmp = CA_APPS_CACHE_FILE . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        @unlink($tmp);
+        return false;
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, CA_APPS_CACHE_FILE)) {
+        @unlink($tmp);
+        return false;
+    }
+    return true;
+}
+
+/** HTTP 取 feed:cURL 优先(连接/总超时 + 写回调强制大小上限),无 cURL 时流式分块读 */
+function caAppsHttpGet(string $url): array
+{
+    if (function_exists('curl_init')) {
+        return caAppsCurlGet($url);
+    }
+    return caAppsStreamGet($url);
+}
+
+function caAppsCurlGet(string $url): array
+{
+    $ch = curl_init();
+    if ($ch === false) {
+        return ['ok' => false, 'body' => '', 'error' => 'curl 初始化失败'];
+    }
+    $body = '';
+    $overflow = false;
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => CA_APPS_CONNECT_TIMEOUT_SEC,
+        CURLOPT_TIMEOUT => CA_APPS_TOTAL_TIMEOUT_SEC,
+        CURLOPT_USERAGENT => 'unraid-mobile/compose-api',
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        CURLOPT_ENCODING => '',
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body, &$overflow): int {
+            if ($overflow) {
+                return 0;
+            }
+            $body .= $chunk;
+            if (strlen($body) > CA_APPS_MAX_BYTES) {
+                $overflow = true;
+                return 0;
+            }
+            return strlen($chunk);
+        },
+    ]);
+    if (defined('CURLOPT_PROTOCOLS_STR')) {
+        curl_setopt($ch, constant('CURLOPT_PROTOCOLS_STR'), 'http,https');
+    } elseif (defined('CURLOPT_PROTOCOLS')) {
+        curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+    }
+    $result = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $error = curl_error($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($overflow) {
+        return ['ok' => false, 'body' => '', 'error' => 'feed 超过大小上限 ' . CA_APPS_MAX_BYTES . ' 字节'];
+    }
+    if ($result === false) {
+        return ['ok' => false, 'body' => '', 'error' => $error !== '' ? $error : ('HTTP 失败 errno=' . $errno)];
+    }
+    if ($code !== 200) {
+        return ['ok' => false, 'body' => '', 'error' => 'HTTP ' . $code];
+    }
+    return ['ok' => true, 'body' => $body, 'error' => ''];
+}
+
+function caAppsStreamGet(string $url): array
+{
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => CA_APPS_TOTAL_TIMEOUT_SEC,
+            'ignore_errors' => true,
+            'header' => "Accept: application/json\r\nUser-Agent: unraid-mobile/compose-api\r\n",
+        ],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+    $fh = @fopen($url, 'rb', false, $context);
+    if ($fh === false) {
+        return ['ok' => false, 'body' => '', 'error' => '打开 feed 失败'];
+    }
+    $body = '';
+    while (!feof($fh)) {
+        $chunk = fread($fh, 262144);
+        if ($chunk === false) {
+            fclose($fh);
+            return ['ok' => false, 'body' => '', 'error' => '读取 feed 失败'];
+        }
+        $body .= $chunk;
+        if (strlen($body) > CA_APPS_MAX_BYTES) {
+            fclose($fh);
+            return ['ok' => false, 'body' => '', 'error' => 'feed 超过大小上限 ' . CA_APPS_MAX_BYTES . ' 字节'];
+        }
+    }
+    $meta = stream_get_meta_data($fh);
+    fclose($fh);
+    $status = 0;
+    foreach (($meta['wrapper_data'] ?? []) as $header) {
+        if (is_string($header) && preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $match)) {
+            $status = (int) $match[1];
+        }
+    }
+    if ($status !== 0 && $status !== 200) {
+        return ['ok' => false, 'body' => '', 'error' => 'HTTP ' . $status];
+    }
+    return ['ok' => true, 'body' => $body, 'error' => ''];
+}
+
+/** feed 文本 → 内部记录数组(顶层 applist) */
+function caAppsParseFeed(string $body): array
+{
+    $data = json_decode($body, true);
+    if (!is_array($data)) {
+        return ['ok' => false, 'records' => [], 'error' => 'feed 不是合法 JSON'];
+    }
+    $list = $data['applist'] ?? null;
+    if (!is_array($list)) {
+        foreach (['apps', 'applications'] as $key) {
+            if (is_array($data[$key] ?? null)) {
+                $list = $data[$key];
+                break;
+            }
+        }
+    }
+    if (!is_array($list)) {
+        return ['ok' => false, 'records' => [], 'error' => 'feed 缺少 applist 数组'];
+    }
+    $records = [];
+    $seen = [];
+    foreach ($list as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $record = caAppsRecord($item);
+        if ($record === null) {
+            continue;
+        }
+        if (isset($seen[$record['id']])) {
+            continue;
+        }
+        $seen[$record['id']] = true;
+        $records[] = $record;
+    }
+    usort($records, static fn(array $a, array $b): int => strnatcasecmp((string) $a['name'], (string) $b['name']));
+    return ['ok' => true, 'records' => $records, 'error' => ''];
+}
+
+/** 拉远端 feed(不落盘),失败返回原因 */
+function caAppsFetch(): array
+{
+    $http = caAppsHttpGet(CA_APPS_FEED_URL);
+    if (!$http['ok']) {
+        return ['ok' => false, 'records' => [], 'error' => $http['error']];
+    }
+    return caAppsParseFeed($http['body']);
+}
+
+/**
+ * CA 应用列表:缓存优先(短 TTL,默认不碰远端);refresh=1 强制重取。
+ * 拉取失败保留旧缓存并标 stale;无任何缓存才报错。
+ */
+function caAppsResponse(bool $refresh): array
+{
+    $cache = caAppsReadCache();
+    $now = time();
+    if (!$refresh && $cache !== null && ($now - $cache['cachedAt']) < CA_APPS_CACHE_TTL) {
+        return [
+            'apps' => caAppsApplyInstalled($cache['records'], caAppsInstalledContext()),
+            'cachedAt' => $cache['cachedAt'],
+            'stale' => false,
+        ];
+    }
+    $fetched = caAppsFetch();
+    if ($fetched['ok']) {
+        $records = $fetched['records'];
+        if ($records === []) {
+            $error = 'feed 解析出 0 条应用';
+            error_log('unraid-mobile compose-api: CA 应用 ' . $error);
+            if ($cache !== null) {
+                return [
+                    'apps' => caAppsApplyInstalled($cache['records'], caAppsInstalledContext()),
+                    'cachedAt' => $cache['cachedAt'],
+                    'stale' => true,
+                ];
+            }
+            fail(502, 'CA 应用列表获取失败: ' . $error);
+        }
+        if (!caAppsWriteCache($now, $records)) {
+            error_log('unraid-mobile compose-api: CA 应用缓存写入失败');
+        }
+        return [
+            'apps' => caAppsApplyInstalled($records, caAppsInstalledContext()),
+            'cachedAt' => $now,
+            'stale' => false,
+        ];
+    }
+    error_log('unraid-mobile compose-api: CA 应用 feed 拉取失败: ' . $fetched['error']);
+    if ($cache !== null) {
+        return [
+            'apps' => caAppsApplyInstalled($cache['records'], caAppsInstalledContext()),
+            'cachedAt' => $cache['cachedAt'],
+            'stale' => true,
+        ];
+    }
+    fail(502, 'CA 应用列表获取失败: ' . $fetched['error']);
+}
+
+// ---------- CA Docker 模板读取与官方安装 ----------
+
+function caTemplateUrl(mixed $url): string
+{
+    if (!is_string($url) || $url === '' || strlen($url) > 4096 || preg_match('/[\x00-\x20\x7f]/', $url)) {
+        fail(400, '非法 CA 模板 URL');
+    }
+    $parts = parse_url($url);
+    if (
+        !is_array($parts)
+        || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || !is_string($parts['host'] ?? null)
+        || $parts['host'] === ''
+        || isset($parts['user'])
+        || isset($parts['pass'])
+    ) {
+        fail(400, 'CA 模板 URL 必须是 HTTPS 且不允许用户信息');
+    }
+    $apps = caAppsResponse(false)['apps'];
+    foreach ($apps as $app) {
+        if (
+            ($app['type'] ?? '') === 'docker'
+            && is_string($app['templateUrl'] ?? null)
+            && hash_equals($app['templateUrl'], $url)
+        ) {
+            return $url;
+        }
+    }
+    fail(400, '模板 URL 不在当前 CA feed 白名单中');
+}
+
+function caTemplateHttpGet(string $url): string
+{
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        if ($ch === false) {
+            fail(502, 'CA 模板下载初始化失败');
+        }
+        $body = '';
+        $overflow = false;
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_CONNECTTIMEOUT => CA_APPS_CONNECT_TIMEOUT_SEC,
+            CURLOPT_TIMEOUT => CA_APPS_TOTAL_TIMEOUT_SEC,
+            CURLOPT_USERAGENT => 'unraid-mobile/compose-api',
+            CURLOPT_HTTPHEADER => ['Accept: application/xml,text/xml'],
+            CURLOPT_ENCODING => '',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body, &$overflow): int {
+                $body .= $chunk;
+                if (strlen($body) > CA_TEMPLATE_MAX_BYTES) {
+                    $overflow = true;
+                    return 0;
+                }
+                return strlen($chunk);
+            },
+        ]);
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            curl_setopt($ch, constant('CURLOPT_PROTOCOLS_STR'), 'https');
+        } elseif (defined('CURLOPT_PROTOCOLS')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        }
+        $result = curl_exec($ch);
+        $error = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        if ($overflow) {
+            fail(502, 'CA 模板超过大小上限');
+        }
+        if ($result === false) {
+            fail(502, 'CA 模板下载失败: ' . ($error !== '' ? $error : 'cURL 错误'));
+        }
+        if ($code !== 200) {
+            fail(502, 'CA 模板下载返回 HTTP ' . $code . '(不允许重定向)');
+        }
+        return $body;
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => CA_APPS_TOTAL_TIMEOUT_SEC,
+            'follow_location' => 0,
+            'max_redirects' => 0,
+            'ignore_errors' => true,
+            'header' => "Accept: application/xml,text/xml\r\nUser-Agent: unraid-mobile/compose-api\r\n",
+        ],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+    $fh = @fopen($url, 'rb', false, $context);
+    if ($fh === false) {
+        fail(502, 'CA 模板下载失败');
+    }
+    $body = '';
+    while (!feof($fh)) {
+        $chunk = fread($fh, 262144);
+        if ($chunk === false) {
+            fclose($fh);
+            fail(502, 'CA 模板读取失败');
+        }
+        $body .= $chunk;
+        if (strlen($body) > CA_TEMPLATE_MAX_BYTES) {
+            fclose($fh);
+            fail(502, 'CA 模板超过大小上限');
+        }
+    }
+    $meta = stream_get_meta_data($fh);
+    fclose($fh);
+    $status = 0;
+    foreach (($meta['wrapper_data'] ?? []) as $header) {
+        if (is_string($header) && preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $match)) {
+            $status = (int) $match[1];
+        }
+    }
+    if ($status !== 200) {
+        fail(502, 'CA 模板下载返回 HTTP ' . $status . '(不允许重定向)');
+    }
+    return $body;
+}
+
+function caTemplateXml(string $url): SimpleXMLElement
+{
+    $body = caTemplateHttpGet($url);
+    $dom = @simplexml_load_string($body, SimpleXMLElement::class, LIBXML_NONET);
+    if (!$dom instanceof SimpleXMLElement || $dom->getName() !== 'Container') {
+        fail(422, 'CA 模板不是有效的 Container XML');
+    }
+    if (trim((string) $dom->Name) === '' || trim((string) $dom->Repository) === '') {
+        fail(422, 'CA 模板缺少 Name 或 Repository');
+    }
+    if ((string) $dom['version'] !== '2') {
+        fail(422, '仅支持 version=2 的 CA Docker 模板');
+    }
+    return $dom;
+}
+
+function caTemplateData(string $url): array
+{
+    $dom = caTemplateXml($url);
+    $configs = [];
+    foreach ($dom->Config as $node) {
+        $attrs = $node->attributes();
+        $attr = static fn(string $key): string => (string) ($attrs[$key] ?? '');
+        $default = $attr('Default');
+        $raw = (string) $node;
+        $value = $raw !== '' ? $raw : $default;
+        $mask = in_array(strtolower($attr('Mask')), ['true', '1', 'yes', 'on'], true);
+        $configs[] = [
+            'target' => $attr('Target'),
+            'name' => $attr('Name'),
+            'default' => $mask ? '' : $default,
+            'value' => $mask ? '' : $value,
+            'type' => $attr('Type'),
+            'mode' => $attr('Mode'),
+            'description' => $attr('Description'),
+            'display' => !in_array(strtolower($attr('Display')), ['never', 'hidden', 'hide', 'false', '0', 'no', 'off'], true),
+            'required' => in_array(strtolower($attr('Required')), ['true', '1', 'yes', 'on'], true),
+            'mask' => $mask,
+        ];
+    }
+    return [
+        'name' => trim((string) $dom->Name),
+        'repository' => trim((string) $dom->Repository),
+        'icon' => trim((string) $dom->Icon),
+        'configs' => $configs,
+    ];
+}
+
+function caDockerContainerExists(string $name): bool
+{
+    $lines = [];
+    $code = 1;
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' inspect --format ' . escapeshellarg('{{.Name}}')
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null',
+        $lines,
+        $code
+    );
+    return $code === 0 && trim((string) ($lines[0] ?? '')) === '/' . $name;
+}
+
+function caInstallPost(SimpleXMLElement $dom, string $url, array $values): array
+{
+    $name = trim((string) $dom->Name);
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/D', $name)) {
+        fail(422, 'CA 模板容器名不合法');
+    }
+    $post = [];
+    $fields = [
+        'contName' => 'Name', 'contRepository' => 'Repository', 'contRegistry' => 'Registry',
+        'contNetwork' => 'Network', 'contShell' => 'Shell', 'contSupport' => 'Support',
+        'contProject' => 'Project', 'contReadMe' => 'ReadMe', 'contOverview' => 'Overview',
+        'contCategory' => 'Category', 'contWebUI' => 'WebUI', 'contIcon' => 'Icon',
+        'contExtraParams' => 'ExtraParams', 'contPostArgs' => 'PostArgs', 'contCPUset' => 'CPUset',
+        'contRequires' => 'Requires', 'contExtraNetworks' => 'ExtraNetworks', 'contMyIP' => 'MyIP',
+        'contMyMAC' => 'MyMAC', 'contMemory' => 'Memory', 'contDonateText' => 'DonateText',
+        'contDonateLink' => 'DonateLink',
+    ];
+    foreach ($fields as $key => $tag) {
+        $post[$key] = (string) $dom->{$tag};
+    }
+    $post['contName'] = $name;
+    $post['contRepository'] = trim($post['contRepository']);
+    $post['contShell'] = $post['contShell'] !== '' ? $post['contShell'] : 'sh';
+    $post['contPrivileged'] = strtolower((string) $dom->Privileged) === 'true' ? 'on' : '';
+    $post['contTemplateURL'] = $url;
+
+    $configs = [];
+    $allowed = [];
+    $secrets = [];
+    foreach ($dom->Config as $node) {
+        $attrs = $node->attributes();
+        $attr = static fn(string $key): string => (string) ($attrs[$key] ?? '');
+        $target = $attr('Target');
+        if ($target !== '') {
+            if (isset($allowed[$target])) {
+                fail(422, 'CA 模板包含重复 Config Target');
+            }
+            $allowed[$target] = true;
+        }
+        $configs[] = [$node, $attr];
+    }
+    foreach ($values as $target => $value) {
+        if (!is_string($target) || !isset($allowed[$target])) {
+            fail(400, 'values 包含模板未声明的 Config Target');
+        }
+        if (!is_scalar($value) || strlen((string) $value) > 65536) {
+            fail(400, 'Config 值必须是长度不超过 65536 的标量');
+        }
+    }
+
+    $arrays = ['confName', 'confTarget', 'confDefault', 'confMode', 'confDescription', 'confType', 'confDisplay', 'confRequired', 'confMask', 'confValue'];
+    foreach ($arrays as $key) {
+        $post[$key] = [];
+    }
+    foreach ($configs as [$node, $attr]) {
+        $target = $attr('Target');
+        $default = $attr('Default');
+        $raw = (string) $node;
+        $original = $raw !== '' ? $raw : $default;
+        $value = $target !== '' && array_key_exists($target, $values) ? (string) $values[$target] : $original;
+        $required = in_array(strtolower($attr('Required')), ['true', '1', 'yes', 'on'], true);
+        $mask = in_array(strtolower($attr('Mask')), ['true', '1', 'yes', 'on'], true);
+        if ($required && trim($value) === '') {
+            if ($mask && $original !== '') {
+                $value = $original;
+            } else {
+                fail(400, '必填 Config 不能为空: ' . $attr('Name'));
+            }
+        }
+        if ($mask) {
+            foreach (array_unique([$default, $original, $value]) as $secret) {
+                if ($secret !== '') {
+                    $secrets[] = $secret;
+                }
+            }
+        }
+        $post['confName'][] = $attr('Name');
+        $post['confTarget'][] = $target;
+        $post['confDefault'][] = $default;
+        $post['confMode'][] = $attr('Mode');
+        $post['confDescription'][] = $attr('Description');
+        $post['confType'][] = $attr('Type');
+        $post['confDisplay'][] = $attr('Display');
+        $post['confRequired'][] = $attr('Required');
+        $post['confMask'][] = $attr('Mask');
+        $post['confValue'][] = $value;
+    }
+    return ['post' => $post, 'secrets' => array_values(array_unique($secrets)), 'name' => $name];
+}
+
+function caInstallJobScript(array $job): string
+{
+    $template = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+const CA_JOB_WORK_DIR = __WORK_DIR__;
+const CA_JOB_CREATE_DOCKER = __CREATE_DOCKER__;
+const CA_JOB_DOCKER = __DOCKER__;
+const CA_JOB_AUDIT = __AUDIT__;
+$job = __JOB__;
+$logPath = CA_JOB_WORK_DIR . '/' . $job['id'] . '.log';
+$statusPath = CA_JOB_WORK_DIR . '/' . $job['id'] . '.json';
+$resultPath = CA_JOB_WORK_DIR . '/' . $job['id'] . '.result.json';
+
+function caWorkerJson(string $path, array $data): void
+{
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        return;
+    }
+    $tmp = $path . '.tmp.' . getmypid();
+    if (@file_put_contents($tmp, $json, LOCK_EX) !== false) {
+        @chmod($tmp, 0600);
+        @rename($tmp, $path);
+    }
+}
+
+function caWorkerRedact(string $text, array $secrets): string
+{
+    foreach ($secrets as $secret) {
+        if (!is_string($secret) || $secret === '') {
+            continue;
+        }
+        $variants = [
+            $secret,
+            htmlspecialchars($secret, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            addslashes($secret),
+            addslashes(htmlspecialchars($secret, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
+        ];
+        $text = str_replace(array_unique($variants), '********', $text);
+    }
+    return $text;
+}
+
+function caWorkerLog(string $path, string $message, array $secrets): void
+{
+    if ($message !== '') {
+        @file_put_contents($path, caWorkerRedact($message, $secrets), FILE_APPEND | LOCK_EX);
+        @chmod($path, 0600);
+    }
+}
+
+function caWorkerContainerExists(string $name): bool
+{
+    $lines = [];
+    $code = 1;
+    exec(CA_JOB_DOCKER . ' inspect --format ' . escapeshellarg('{{.Name}}') . ' ' . escapeshellarg($name) . ' 2>/dev/null', $lines, $code);
+    return $code === 0 && trim((string) ($lines[0] ?? '')) === '/' . $name;
+}
+
+function caWorkerTemplateExists(string $name): bool
+{
+    foreach (glob('/boot/config/plugins/dockerMan/templates-user/my-*.xml') ?: [] as $path) {
+        $dom = @simplexml_load_file($path, SimpleXMLElement::class, LIBXML_NONET);
+        if ($dom instanceof SimpleXMLElement && trim((string) $dom->Name) === $name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function caWorkerAudit(string $name, string $result, string $ip): void
+{
+    $size = @filesize(CA_JOB_AUDIT);
+    if ($size !== false && $size > 1048576) {
+        @rename(CA_JOB_AUDIT, CA_JOB_AUDIT . '.old');
+    }
+    @file_put_contents(
+        CA_JOB_AUDIT,
+        sprintf('[%s] action=cainstall stack=%s result=%s ip=%s\n', date('c'), $name, $result, $ip),
+        FILE_APPEND | LOCK_EX
+    );
+}
+
+$error = null;
+$started = false;
+register_shutdown_function(static function () use (&$error, &$started, $job, $logPath, $statusPath, $resultPath): void {
+    while (ob_get_level() > 0) {
+        ob_end_flush();
+    }
+    if ($error !== null) {
+        caWorkerLog($logPath, "\n[unraid-mobile] " . $error . "\n", $job['secrets']);
+    }
+    $exists = $started && caWorkerContainerExists($job['name']);
+    $failure = $error ?? '官方流程结束,但最终未检测到同名 Docker 容器';
+    $result = [
+        'success' => $exists,
+        'name' => $job['name'],
+        'finishedAt' => date('c'),
+        'error' => $exists ? null : caWorkerRedact($failure, $job['secrets']),
+    ];
+    caWorkerLog($logPath, "\n[unraid-mobile] " . ($exists ? '安装成功,已确认容器存在' : '安装失败: ' . $result['error']) . "\n", $job['secrets']);
+    caWorkerJson($resultPath, $result);
+    $status = json_decode((string) @file_get_contents($statusPath), true);
+    if (!is_array($status)) {
+        $status = ['id' => $job['id'], 'name' => $job['name']];
+    }
+    $status['running'] = false;
+    $status['result'] = $result;
+    $status['finishedAt'] = $result['finishedAt'];
+    caWorkerJson($statusPath, $status);
+    caWorkerAudit($job['name'], $exists ? 'ok' : 'fail', $job['ip']);
+    $lockPath = CA_JOB_WORK_DIR . '/cainstall.lock';
+    if (trim((string) @file_get_contents($lockPath)) === $job['id']) {
+        @unlink($lockPath);
+    }
+    @unlink(__FILE__);
+});
+
+ignore_user_abort(true);
+set_time_limit(0);
+caWorkerLog($logPath, '[' . date('c') . "] 开始官方 CA 安装: " . $job['name'] . "\n", $job['secrets']);
+ob_start(static function (string $chunk) use ($logPath, $job): string {
+    caWorkerLog($logPath, $chunk, $job['secrets']);
+    return '';
+}, 8192);
+try {
+    if (caWorkerContainerExists($job['name']) || caWorkerTemplateExists($job['name'])) {
+        throw new RuntimeException('同名容器或用户模板已存在,拒绝覆盖');
+    }
+    if (!is_file(CA_JOB_CREATE_DOCKER)) {
+        throw new RuntimeException('官方 CreateDocker.php 不存在');
+    }
+    if (!@chdir('/usr/local/emhttp')) {
+        throw new RuntimeException('无法进入官方 docroot');
+    }
+    $_POST = $job['post'];
+    $_REQUEST = $_POST;
+    $_GET = [];
+    $_FILES = [];
+    $_SERVER['DOCUMENT_ROOT'] = '/usr/local/emhttp';
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_SERVER['REQUEST_URI'] = '/Docker/Add';
+    $started = true;
+    include CA_JOB_CREATE_DOCKER;
+} catch (Throwable $e) {
+    $error = $e->getMessage();
+}
+PHP;
+    return strtr($template, [
+        '__WORK_DIR__' => var_export(PLUGIN_WORK_DIR, true),
+        '__CREATE_DOCKER__' => var_export(CA_CREATE_DOCKER, true),
+        '__DOCKER__' => var_export(DOCKER, true),
+        '__AUDIT__' => var_export(AUDIT_LOG, true),
+        '__JOB__' => var_export($job, true),
+    ]);
+}
+
+function startCaInstallJob(array $prepared): string
+{
+    if (!is_file(CA_CREATE_DOCKER)) {
+        fail(503, '官方 CreateDocker.php 不存在');
+    }
+    if (!is_dir(PLUGIN_WORK_DIR) && !@mkdir(PLUGIN_WORK_DIR, 0700, true) && !is_dir(PLUGIN_WORK_DIR)) {
+        fail(500, 'CA 任务目录创建失败');
+    }
+    @chmod(PLUGIN_WORK_DIR, 0700);
+    $id = bin2hex(random_bytes(16));
+    $lock = @fopen(CA_INSTALL_LOCK, 'x');
+    if ($lock === false) {
+        audit('cainstall', $prepared['name'], 'fail');
+        fail(409, '已有 CA 安装任务正在进行中');
+    }
+    if (@fwrite($lock, $id) === false) {
+        fclose($lock);
+        @unlink(CA_INSTALL_LOCK);
+        fail(500, 'CA 任务锁写入失败');
+    }
+    fclose($lock);
+    $job = [
+        'id' => $id,
+        'name' => $prepared['name'],
+        'post' => $prepared['post'],
+        'secrets' => $prepared['secrets'],
+        'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
+    ];
+    $script = PLUGIN_WORK_DIR . '/' . $id . '.php';
+    $status = [
+        'id' => $id,
+        'name' => $prepared['name'],
+        'createdAt' => date('c'),
+        'running' => true,
+        'result' => null,
+    ];
+    try {
+        if (@file_put_contents($script, caInstallJobScript($job), LOCK_EX) === false) {
+            throw new RuntimeException('CA worker 写入失败');
+        }
+        @chmod($script, 0700);
+        writePluginJson(PLUGIN_WORK_DIR . '/' . $id . '.json', $status);
+        @file_put_contents(PLUGIN_WORK_DIR . '/' . $id . '.log', '', LOCK_EX);
+        @chmod(PLUGIN_WORK_DIR . '/' . $id . '.log', 0600);
+    } catch (Throwable $e) {
+        @unlink($script);
+        @unlink(CA_INSTALL_LOCK);
+        fail(500, $e->getMessage());
+    }
+    audit('cainstall', $prepared['name'], 'queued');
+    exec(PATH_ENV . ' nohup /usr/bin/php ' . escapeshellarg($script) . ' > /dev/null 2>&1 < /dev/null &');
+    return $id;
+}
+
+function startCaInstall(array $body): string
+{
+    $url = caTemplateUrl($body['templateUrl'] ?? null);
+    $dom = caTemplateXml($url);
+    $values = $body['values'] ?? [];
+    if (!is_array($values)) {
+        fail(400, 'values 必须是 TARGET:value 对象');
+    }
+    $prepared = caInstallPost($dom, $url, $values);
+    $name = $prepared['name'];
+    if (caDockerContainerExists($name)) {
+        audit('cainstall', $name, 'fail');
+        fail(409, '同名 Docker 容器已存在,只允许安装新容器');
+    }
+    if (findUserTemplate($name) !== null) {
+        audit('cainstall', $name, 'fail');
+        fail(409, '同名用户模板已存在,不允许更新或覆盖');
+    }
+    return startCaInstallJob($prepared);
+}
+
+function readCaJob(string $id): ?array
+{
+    if (!preg_match('/^[a-f0-9]{32}$/D', $id)) {
+        return null;
+    }
+    $job = readJsonFile(PLUGIN_WORK_DIR . '/' . $id . '.json');
+    if (!is_array($job) || ($job['id'] ?? null) !== $id) {
+        return null;
+    }
+    return [
+        'id' => $id,
+        'name' => (string) ($job['name'] ?? ''),
+        'running' => ($job['running'] ?? false) === true,
+        'log' => tailFile(PLUGIN_WORK_DIR . '/' . $id . '.log'),
+        'result' => is_array($job['result'] ?? null) ? $job['result'] : null,
+    ];
+}
+
 function validatePluginInstallUrl(mixed $url): array
 {
     $url = (string) $url;
@@ -1669,6 +2764,44 @@ function setIndexConfig(array $body): array
     return indexStatus();
 }
 
+/**
+ * 服务器电源(重启/关机)——高危不可逆操作。
+ *
+ * 语义(与本文件其余端点不同,逐条都是硬约束):
+ *   1. 严格白名单:operation 只接受 'reboot' / 'shutdown';请求体除 action/operation 外
+ *      出现任何额外键(延迟秒数、强制标志、命令…)一律 400 拒绝,防止"顺手带个参数"绕过白名单。
+ *   2. 用户输入不进 shell:执行命令全部来自 SERVER_POWER_COMMANDS 常量表,用户输入只当表键查表,
+ *      查不到就拒绝;代码里不存在把 $body 拼进命令行的路径。
+ *   3. 审计先写:命令一旦下发,机器可能在秒级断电,进程与内存会一起消失,事后无从追溯 ——
+ *      所以先把意图写进 flash 审计日志,再下发命令。拒绝的请求同样留痕。
+ *   4. 异步下发:nohup 后台执行官方 WebGUI 同款命令,不等它跑完、不等断线,立即返回
+ *      {accepted:true, operation},由前端提示"服务器即将重启/关机"。
+ */
+function runServerPower(array $body): void
+{
+    // (1) 只接受 action / operation 两个键,其余一律拒绝(不回显用户输入,避免日志/响应注入)
+    foreach (array_keys($body) as $key) {
+        if ($key !== 'action' && $key !== 'operation') {
+            fail(400, 'serverpower 只接受 action 与 operation 两个参数');
+        }
+    }
+    // (2) operation 严格白名单;表里没有就是拒绝(不做任何"猜测式"纠正)
+    //     非字符串(数组/对象/数字)一律按非法处理,先归一成字符串再判定,避免后续处理抛 TypeError
+    $rawOperation = $body['operation'] ?? '';
+    $operation = is_string($rawOperation) ? $rawOperation : '';
+    if ($operation === '' || !array_key_exists($operation, SERVER_POWER_COMMANDS)) {
+        // 审计只记净化后的标签(剥掉控制字符/换行,防伪造审计行),不回显原始输入
+        $label = preg_replace('/[^A-Za-z0-9_-]/', '', mb_substr($operation, 0, 32));
+        audit('serverpower', is_string($label) && $label !== '' ? $label : '-', 'fail');
+        fail(400, 'operation 必须是 "reboot" 或 "shutdown"');
+    }
+    // (3) 审计先行 —— 命令下发后机器可能秒级断电,先留痕再执行
+    audit('serverpower', $operation, 'ok');
+    // (4) 异步下发:命令取自固定表(用户输入只做查表),nohup 后台跑,立即返回不等断线
+    exec(PATH_ENV . ' nohup ' . SERVER_POWER_COMMANDS[$operation] . ' > /dev/null 2>&1 &');
+    ok(['accepted' => true, 'operation' => $operation]);
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
@@ -1720,6 +2853,26 @@ if ($method === 'GET') {
         $job = readPluginJob($id);
         if ($job === null) {
             fail(404, '插件任务不存在');
+        }
+        ok($job);
+    }
+
+    // CA 应用商店(只读):官方 feed → 白名单归一化 → /tmp 缓存;refresh=1 强制重取
+    if ($action === 'caapps') {
+        $refresh = in_array((string) ($_GET['refresh'] ?? '0'), ['1', 'true', 'yes'], true);
+        ok(caAppsResponse($refresh));
+    }
+
+    if ($action === 'catemplate') {
+        $url = caTemplateUrl($_GET['url'] ?? null);
+        ok(caTemplateData($url));
+    }
+
+    if ($action === 'cajob') {
+        $id = (string) ($_GET['id'] ?? '');
+        $job = readCaJob($id);
+        if ($job === null) {
+            fail(404, 'CA 安装任务不存在');
         }
         ok($job);
     }
@@ -1849,6 +3002,11 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         ok(['jobId' => $jobId, 'async' => true]);
     }
 
+    if ($action === 'cainstall') {
+        $jobId = startCaInstall($body);
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
+
     if ($action === 'autostart') {
         $name = validName($body['name'] ?? '');
         $value = (string) ($body['value'] ?? '');
@@ -1903,6 +3061,12 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         }
         runDockerUpdateAsync($name, $tmpl);
         ok(['async' => true]);
+    }
+
+    // 服务器电源(重启/关机):高危不可逆。严格白名单 + 审计先写 + nohup 异步下发,
+    // 立即返回 {accepted:true,operation},不等待断线(详见 runServerPower 注释)。
+    if ($action === 'serverpower') {
+        runServerPower($body);
     }
 
     // 固定子命令白名单,参数不外传(无注入面)

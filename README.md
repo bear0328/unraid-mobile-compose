@@ -155,10 +155,10 @@ Without it, those features show an install guide or a placeholder; **everything 
 The host agent source is published in [`compose-api/`](compose-api/) so you can audit exactly
 what runs on your server as root.
 
-The native app's "Settings → Plugins" supports installed-plugin lists, manual update checks,
-single/batch updates, HTTPS `.plg` installation, and removal. Jobs run serially in the host background
+Web and native support Community Applications search, categories, details, HTTPS `.plg` plugin
+installation, and official Docker template installation. Plugin jobs run serially in the host background
 with logs. Plugin-author scripts run as root: install only trusted sources. Removal and configuration
-cleanup are defined by each plugin. Community Applications browsing and Unraid OS updates are out of scope.
+cleanup are defined by each plugin. Unraid OS updates remain out of scope.
 
 > ⚠️ **Risk notice (read before installing)**
 > The install script modifies the following persistent host files (all tagged 【unraid-mobile】,
@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.24/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.25 (2026-10-27)
+
+- Both clients add the CA app store, official Docker template installation, Parity controls, and Pro server-power actions. File previews now cover images, videos, and PDFs. Native adds App Lock and a recoverable background upload center in TestFlight 2.0.0 (38)
+- Fixed recurring Compose update badges, stale disk-sleep snapshots after wake, and multi-server/asynchronous job races. compose-api is updated, so **re-run the install script after upgrading**
 
 ### v1.3.24 (2026-10-26)
 
