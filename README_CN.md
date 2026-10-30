@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.26(2026-10-30)
+
+- 修复 Web 批量删除文件夹的软删除路径，以及原生搜索关键词特殊字符被误解析的问题；文件与文件夹名称搜索和索引不再遗漏 8 层以下的路径。原生版本为 TestFlight 2.0.0(61)
+- 磁盘唤醒支持并行提交与慢起转等待状态，CA 模板安装补齐数字 Target、续装与运行状态判定。compose-api 与索引脚本已更新，**升级后需重跑安装脚本并重建文件索引**
 
 ### v1.3.25(2026-10-27)
 

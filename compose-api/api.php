@@ -148,9 +148,7 @@ const DISKS_INI_FILE = '/usr/local/emhttp/state/disks.ini';
 const ARRAY_VAR_FILE = '/var/local/emhttp/var.ini';
 const DISK_WAKE_LOCK_FILE = '/tmp/unraid-mobile-diskwake.lock';
 const EMCMD = '/usr/local/sbin/emcmd';
-// 单条 emcmd 的兜底超时(emhttp 忙时不让整个请求挂死)
-const DISK_WAKE_CMD_TIMEOUT_SEC = 5;
-// 全部提交后最多等 30s(每秒重读一次状态文件),整体请求上限 45s
+// 并行提交后最多等 30s(每秒重读一次状态文件),整体请求上限 45s
 const DISK_WAKE_WAIT_SEC = 30;
 const DISK_WAKE_TIME_LIMIT_SEC = 45;
 
@@ -932,6 +930,15 @@ function findUserTemplate(string $name): ?string
         }
     }
     return null;
+}
+
+function userTemplateMatchesUrl(?string $path, string $url): bool
+{
+    if ($path === null) {
+        return false;
+    }
+    $dom = @simplexml_load_file($path, SimpleXMLElement::class, LIBXML_NONET);
+    return $dom instanceof SimpleXMLElement && hash_equals($url, trim((string) $dom->TemplateURL));
 }
 
 /**
@@ -1907,6 +1914,10 @@ function caInstallPost(SimpleXMLElement $dom, string $url, array $values): array
         $configs[] = [$node, $attr];
     }
     foreach ($values as $target => $value) {
+        // JSON 数字形式 Target(如端口 8001)解码为 PHP 数组后会变成整数键。
+        if (is_int($target)) {
+            $target = (string) $target;
+        }
         if (!is_string($target) || !isset($allowed[$target])) {
             fail(400, 'values 包含模板未声明的 Config Target');
         }
@@ -2017,12 +2028,35 @@ function caWorkerContainerExists(string $name): bool
     return $code === 0 && trim((string) ($lines[0] ?? '')) === '/' . $name;
 }
 
+function caWorkerContainerState(string $name): ?array
+{
+    $lines = [];
+    $code = 1;
+    exec(CA_JOB_DOCKER . ' inspect --format ' . escapeshellarg('{{.State.Status}}|{{.State.Error}}') . ' ' . escapeshellarg($name) . ' 2>/dev/null', $lines, $code);
+    if ($code !== 0) {
+        return null;
+    }
+    [$status, $error] = array_pad(explode('|', trim((string) ($lines[0] ?? '')), 2), 2, '');
+    return $status !== '' ? ['status' => $status, 'error' => $error] : null;
+}
+
 function caWorkerTemplateExists(string $name): bool
 {
     foreach (glob('/boot/config/plugins/dockerMan/templates-user/my-*.xml') ?: [] as $path) {
         $dom = @simplexml_load_file($path, SimpleXMLElement::class, LIBXML_NONET);
         if ($dom instanceof SimpleXMLElement && trim((string) $dom->Name) === $name) {
             return true;
+        }
+    }
+    return false;
+}
+
+function caWorkerTemplateMatchesUrl(string $name, string $url): bool
+{
+    foreach (glob('/boot/config/plugins/dockerMan/templates-user/my-*.xml') ?: [] as $path) {
+        $dom = @simplexml_load_file($path, SimpleXMLElement::class, LIBXML_NONET);
+        if ($dom instanceof SimpleXMLElement && trim((string) $dom->Name) === $name) {
+            return hash_equals($url, trim((string) $dom->TemplateURL));
         }
     }
     return false;
@@ -2050,15 +2084,18 @@ register_shutdown_function(static function () use (&$error, &$started, $job, $lo
     if ($error !== null) {
         caWorkerLog($logPath, "\n[unraid-mobile] " . $error . "\n", $job['secrets']);
     }
-    $exists = $started && caWorkerContainerExists($job['name']);
-    $failure = $error ?? '官方流程结束,但最终未检测到同名 Docker 容器';
+    $state = $started ? caWorkerContainerState($job['name']) : null;
+    $exists = $state !== null && $state['status'] === 'running';
+    $failure = $error ?? ($state === null
+        ? '官方流程结束,但最终未检测到同名 Docker 容器'
+        : ($state['error'] !== '' ? $state['error'] : '官方流程结束,但容器未运行(当前状态: ' . $state['status'] . ')'));
     $result = [
         'success' => $exists,
         'name' => $job['name'],
         'finishedAt' => date('c'),
         'error' => $exists ? null : caWorkerRedact($failure, $job['secrets']),
     ];
-    caWorkerLog($logPath, "\n[unraid-mobile] " . ($exists ? '安装成功,已确认容器存在' : '安装失败: ' . $result['error']) . "\n", $job['secrets']);
+    caWorkerLog($logPath, "\n[unraid-mobile] " . ($exists ? '安装成功,已确认容器运行' : '安装失败: ' . $result['error']) . "\n", $job['secrets']);
     caWorkerJson($resultPath, $result);
     $status = json_decode((string) @file_get_contents($statusPath), true);
     if (!is_array($status)) {
@@ -2084,8 +2121,11 @@ ob_start(static function (string $chunk) use ($logPath, $job): string {
     return '';
 }, 8192);
 try {
-    if (caWorkerContainerExists($job['name']) || caWorkerTemplateExists($job['name'])) {
-        throw new RuntimeException('同名容器或用户模板已存在,拒绝覆盖');
+    if (caWorkerContainerExists($job['name'])) {
+        throw new RuntimeException('同名 Docker 容器已存在,拒绝覆盖');
+    }
+    if (caWorkerTemplateExists($job['name']) && !caWorkerTemplateMatchesUrl($job['name'], $job['post']['contTemplateURL'])) {
+        throw new RuntimeException('同名用户模板来自不同地址,拒绝覆盖');
     }
     if (!is_file(CA_JOB_CREATE_DOCKER)) {
         throw new RuntimeException('官方 CreateDocker.php 不存在');
@@ -2100,6 +2140,8 @@ try {
     $_SERVER['DOCUMENT_ROOT'] = '/usr/local/emhttp';
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_SERVER['REQUEST_URI'] = '/Docker/Add';
+    $docroot = '/usr/local/emhttp';
+    require_once "$docroot/webGui/include/Translations.php";
     $started = true;
     include CA_JOB_CREATE_DOCKER;
 } catch (Throwable $e) {
@@ -2183,9 +2225,10 @@ function startCaInstall(array $body): string
         audit('cainstall', $name, 'fail');
         fail(409, '同名 Docker 容器已存在,只允许安装新容器');
     }
-    if (findUserTemplate($name) !== null) {
+    $userTemplate = findUserTemplate($name);
+    if ($userTemplate !== null && !userTemplateMatchesUrl($userTemplate, $url)) {
         audit('cainstall', $name, 'fail');
-        fail(409, '同名用户模板已存在,不允许更新或覆盖');
+        fail(409, '同名用户模板来自不同地址,不允许更新或覆盖');
     }
     return startCaInstallJob($prepared);
 }
@@ -2425,9 +2468,9 @@ function checkArrayReady(): void
 }
 
 /**
- * 磁盘唤醒:对阵列内已分配且状态正常的休眠盘(HDD/SSD)发官方 emcmd cmdSpinup,
+ * 磁盘唤醒:对阵列内已分配且状态正常的休眠盘(HDD/SSD)并行发官方 emcmd cmdSpinup,
  * 全部提交后每秒重读一次 emhttp 状态文件确认起转,最多等 DISK_WAKE_WAIT_SEC 秒。
- * 单盘命令失败记进 failures 后继续;等待超时也返回结构化结果(前端继续刷新)。
+ * 命令未能提交才记 failures;等待超时未起转的盘留 pending(仍在起转),不算失败。
  */
 function runDiskWake(): array
 {
@@ -2481,21 +2524,18 @@ function runDiskWake(): array
             ];
         }
 
-        // 命令提交与状态等待共享 30 秒总预算,多盘慢响应也不能突破客户端超时。
+        // 命令提交与状态等待共享 30 秒总预算。emcmd 在起转期间会阻塞,
+        // 串行提交会把后面的盘挤出等待窗口(HDD 起转 10~20 秒,4 盘串行曾把
+        // 后 2 块误报为失败),故所有目标盘并行后台下发,再统一等盘态。
         $deadline = time() + DISK_WAKE_WAIT_SEC;
         $failures = [];
         foreach ($targets as $target) {
-            $remaining = $deadline - time();
-            if ($remaining <= 0) {
-                break;
-            }
             $name = $target['name'];
             $out = [];
             $code = 1;
-            $commandTimeout = min(DISK_WAKE_CMD_TIMEOUT_SEC, max(1, $remaining));
             @exec(
-                PATH_ENV . ' timeout ' . $commandTimeout . ' ' . EMCMD
-                . ' cmdSpinup=' . escapeshellarg($name) . ' 2>&1',
+                PATH_ENV . ' ' . EMCMD . ' cmdSpinup=' . escapeshellarg($name)
+                . ' >/dev/null 2>&1 &',
                 $out,
                 $code
             );
@@ -2504,7 +2544,7 @@ function runDiskWake(): array
                     'name' => $name,
                     'device' => $target['device'],
                     'exitCode' => $code,
-                    'error' => mb_substr(trim(implode(' ', $out)), 0, 200),
+                    'error' => 'emcmd 提交失败',
                 ];
             }
         }
@@ -2537,15 +2577,10 @@ function runDiskWake(): array
             sleep(1);
         }
 
-        // emcmd 提交可能因起转等待超时返回非零,但 emhttp 随后仍完成唤醒;
-        // 最终只把等待结束仍未起转的盘计为失败,不以提交退出码覆盖真实盘态。
-        $failures = array_values(array_filter(
-            $failures,
-            static fn(array $failure): bool => in_array($failure['name'], $pending, true)
-        ));
-
+        // 起转慢不等于失败:等待结束仍未起转的盘留在 pending(前端提示「仍在起转」),
+        // 只有命令未能提交的才计为失败;emhttp 通常会在等待超时后继续完成唤醒。
         $detail = mb_substr(implode(',', array_column($targets, 'name')), 0, 64);
-        audit('diskwake', $detail, ($failures === [] && !$timedOut) ? 'ok' : 'fail');
+        audit('diskwake', $detail, $failures === [] ? 'ok' : 'fail');
 
         return [
             'targets' => array_column($targets, 'name'),
@@ -2621,20 +2656,20 @@ function searchFiles(string $q, string $scope = 'cache'): array
             $p = $root . '/' . $e;
             if (is_link($p)) {
                 $symlinkFinds .= '; timeout ' . $timeout . ' find -H ' . escapeshellarg($p)
-                    . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+                    . ' -iname ' . escapeshellarg('*' . $q . '*')
                     . ' -printf ' . escapeshellarg("%p\t%y\n") . ' 2>/dev/null';
             }
         }
         $cmd = PATH_ENV . ' sh -c ' . escapeshellarg(
             '{ timeout ' . $timeout . ' find ' . escapeshellarg($root)
-            . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -iname ' . escapeshellarg('*' . $q . '*')
             . ' -printf ' . escapeshellarg("%p\t%y\n") . ' 2>/dev/null'
             . $symlinkFinds . '; } | sed ' . escapeshellarg('s|^' . $root . '/\?||')
         ) . ' | head -n ' . (SEARCH_MAX_RESULTS + 1);
     } else {
         $cmd = PATH_ENV . ' timeout ' . $timeout
             . ' find ' . escapeshellarg($root)
-            . ' -maxdepth 8 -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -iname ' . escapeshellarg('*' . $q . '*')
             . ' -printf ' . escapeshellarg("%P\t%y\n")
             . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
     }

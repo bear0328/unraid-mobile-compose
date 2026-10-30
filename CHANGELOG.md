@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.26] - 2026-10-30
+
+### Fixed
+
+- Fixed missing trailing slashes on soft-delete destinations when batch-deleting folders on Web, keeping deletion and undo consistent with single-folder and native operations
+- File and folder name searches no longer omit paths deeper than eight levels. Native also preserves query delimiters such as `&`, `+`, and `#` correctly; these changes ship in TestFlight 2.0.0 (61)
+- Disk wake commands now run in parallel, with slow disks explicitly left pending. Fixed CA template numeric targets, official translation loading, same-URL installation recovery without a container, and final running-state validation. compose-api and the index builder are updated, so **re-run the install script and rebuild the file index after upgrading**
+
 ## [1.3.25] - 2026-10-27
 
 ### Added

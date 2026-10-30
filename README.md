@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.25/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.26 (2026-10-30)
+
+- Fixed soft-delete paths for batch folder deletion on Web and query-delimiter handling in native search. File and folder name searches and indexes no longer omit paths deeper than eight levels. Native changes ship in TestFlight 2.0.0 (61)
+- Disk wake commands now run in parallel with explicit pending states, while CA template installation handles numeric targets, recovery, and final running-state validation. compose-api and the index builder are updated, so **re-run the install script and rebuild the file index after upgrading**
 
 ### v1.3.25 (2026-10-27)
 
