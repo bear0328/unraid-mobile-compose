@@ -30,8 +30,9 @@ trap 'rm -f "$LOCK_FILE" "$TMP_FILE"' EXIT INT TERM
 # find 默认不跟随软链,整棵树会漏;每个顶层软链单独一次 find -H 跟随(只跟命令行指定的这层,
 # 不跟深层内层软链,防逃逸/环路;份额名含空格也安全)
 {
-    timeout 600 find /mnt/user -printf '%p\t%y\n' 2>/dev/null
+    timeout 600 find /mnt/user -path /mnt/user/.trash -prune -o -printf '%p\t%y\n' 2>/dev/null
     for e in /mnt/user/* /mnt/user/.[!.]*; do
+        [ "$e" = /mnt/user/.trash ] && continue
         [ -L "$e" ] || continue
         timeout 600 find -H "$e" -printf '%p\t%y\n' 2>/dev/null
     done

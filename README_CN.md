@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.27(2026-10-31)
+
+- 双端单个和批量删除统一为直接 `DELETE`，移除 5 秒撤销与回收站写入，确认时明确提示不可撤销。原生版本为 TestFlight 2.0.0(64)
+- 搜索与索引全面排除 `.trash` 及其子内容，旧索引中的回收站条目不再展示。compose-api 与索引脚本已更新，**升级后需重跑安装脚本并重建文件索引**
 
 ### v1.3.26(2026-10-30)
 

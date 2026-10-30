@@ -2650,7 +2650,7 @@ function searchFiles(string $q, string $scope = 'cache'): array
         // 跟随(只跟这层,不跟深层内层软链,防逃逸/环路);%p 打全路径再 sed 剥前缀
         $symlinkFinds = '';
         foreach (scandir($root) ?: [] as $e) {
-            if ($e === '.' || $e === '..') {
+            if ($e === '.' || $e === '..' || $e === '.trash') {
                 continue;
             }
             $p = $root . '/' . $e;
@@ -2662,14 +2662,16 @@ function searchFiles(string $q, string $scope = 'cache'): array
         }
         $cmd = PATH_ENV . ' sh -c ' . escapeshellarg(
             '{ timeout ' . $timeout . ' find ' . escapeshellarg($root)
-            . ' -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -path ' . escapeshellarg($root . '/.trash') . ' -prune -o -iname '
+            . escapeshellarg('*' . $q . '*')
             . ' -printf ' . escapeshellarg("%p\t%y\n") . ' 2>/dev/null'
             . $symlinkFinds . '; } | sed ' . escapeshellarg('s|^' . $root . '/\?||')
         ) . ' | head -n ' . (SEARCH_MAX_RESULTS + 1);
     } else {
         $cmd = PATH_ENV . ' timeout ' . $timeout
             . ' find ' . escapeshellarg($root)
-            . ' -iname ' . escapeshellarg('*' . $q . '*')
+            . ' -path ' . escapeshellarg($root . '/.trash') . ' -prune -o -iname '
+            . escapeshellarg('*' . $q . '*')
             . ' -printf ' . escapeshellarg("%P\t%y\n")
             . ' 2>/dev/null | head -n ' . (SEARCH_MAX_RESULTS + 1);
     }
@@ -2688,7 +2690,8 @@ function parseSearchLines(string $out): array
         }
         $parts = explode("\t", $line);
         $path = $parts[0] ?? '';
-        if ($path === '' || $path === '.') {
+        if ($path === '' || $path === '.' || $path === '.trash'
+            || str_starts_with($path, '.trash/')) {
             continue;
         }
         $results[] = ['path' => $path, 'isDir' => ($parts[1] ?? '') === 'd'];

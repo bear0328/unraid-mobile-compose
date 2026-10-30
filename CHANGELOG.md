@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.27] - 2026-10-31
+
+### Changed
+
+- Single and batch deletion on Web and native iOS now use direct `DELETE`. The five-second undo, trash writes, and restoration flow are removed, and confirmations explicitly state that deletion is irreversible. Native changes ship in TestFlight 2.0.0 (64)
+
+### Fixed
+
+- File search now excludes `.trash` and all its contents in both the app and backend. Existing trash entries disappear from old indexes, while realtime search and future index builds exclude them as well. compose-api and the index builder are updated, so **re-run the install script and rebuild the file index after upgrading**
+
 ## [1.3.26] - 2026-10-30
 
 ### Fixed

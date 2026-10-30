@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.26/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.27 (2026-10-31)
+
+- Single and batch deletion now use direct `DELETE` on both clients, removing the five-second undo and trash writes. Confirmations explicitly state that deletion is irreversible. Native changes ship in TestFlight 2.0.0 (64)
+- Search and indexing now exclude `.trash` and all its contents, including entries already present in old indexes. compose-api and the index builder are updated, so **re-run the install script and rebuild the file index after upgrading**
 
 ### v1.3.26 (2026-10-30)
 
