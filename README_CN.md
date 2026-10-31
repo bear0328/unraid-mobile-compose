@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.28(2026-10-31)
+
+- 原生总览新增 CPU 实时功耗、System/Docker/VM/Cache 分类内存和 Intel/NVIDIA GPU 指标卡；网络速率以 KB 为最小单位，零值统一显示 `0 KB/s`。原生版本为 TestFlight 2.0.0(65)
+- 总览卡片支持持久化拖拽排序、菜单上下移动与缩放。compose-api 新增只读 `systemmetrics`，**升级后需重跑安装脚本**
 
 ### v1.3.27(2026-10-31)
 

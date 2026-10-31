@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.27/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.28 (2026-10-31)
+
+- Native Dashboard adds live CPU power, System/Docker/VM/Cache memory breakdowns, and Intel/NVIDIA GPU metrics. Network rates use KB as the smallest unit and display zero as `0 KB/s`. Native changes ship in TestFlight 2.0.0 (65)
+- Dashboard cards support persistent drag ordering, menu-based movement, and resizing. compose-api adds the read-only `systemmetrics` endpoint, so **re-run the install script after upgrading**
 
 ### v1.3.27 (2026-10-31)
 

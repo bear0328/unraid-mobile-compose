@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.28] - 2026-10-31
+
+### Added
+
+- Native Dashboard adds live RAPL-based CPU power, System/Docker/VM/Cache memory breakdowns, and Intel/NVIDIA GPU cards with utilization, model, frequency, power, and engine details. Native changes ship in TestFlight 2.0.0 (65)
+- Dashboard cards support persistent drag ordering, menu-based movement, and 80%–100% resizing
+- compose-api adds the read-only `systemmetrics` endpoint, reading RAPL, memory cgroups, and GPU drivers without querying disk temperatures or waking sleeping disks. **Re-run the install script after upgrading**
+
+### Changed
+
+- Native network rates now use KB as the smallest unit and consistently display zero as `0 KB/s`, replacing the system formatter's `Zero bytes`
+
 ## [1.3.27] - 2026-10-31
 
 ### Changed

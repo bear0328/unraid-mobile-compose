@@ -2,6 +2,18 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.28] - 2026-10-31
+
+### 新增
+
+- 原生总览新增 CPU RAPL 实时功耗、System/Docker/VM/Cache 分类内存和 Intel/NVIDIA GPU 指标卡，展示占用、型号、频率、功耗与引擎明细。原生版本为 TestFlight 2.0.0(65)
+- 总览卡片支持持久化拖拽排序、菜单上下移动及 80%–100% 缩放
+- compose-api 新增只读 `systemmetrics`，直读 RAPL、内存 cgroup 和 GPU 驱动，不查询磁盘温度、不唤醒休眠盘，**升级后需重跑安装脚本**
+
+### 变更
+
+- 原生网络速率以 KB 为最小单位，零值统一显示 `0 KB/s`，不再出现系统格式化器的 `Zero bytes`
+
 ## [1.3.27] - 2026-10-31
 
 ### 变更

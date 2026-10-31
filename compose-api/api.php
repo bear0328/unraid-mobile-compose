@@ -27,6 +27,7 @@ declare(strict_types=1);
  *                                           这是续 46.5 "GraphQL temperature 唤盘红线"的安全替代)
  *   GET  ?action=networkinfo                网卡状态与累积字节(直读 /proc/net/dev + /sys/class/net,
  *                                           不执行外部命令,计数字符串防 64 位精度损失)
+ *   GET  ?action=systemmetrics              CPU RAPL 能量、分类内存与 Intel/NVIDIA GPU 只读指标
  *   GET  ?action=vminfo&vm=UUID             VM 静态配置(libvirt XML,旧名称寻址兼容)
  *   GET  ?action=vmstats&vm=UUID            VM CPU/内存/磁盘/网络原始计数器(domstats)
  *   GET  ?action=vmlog&vm=UUID&offset=N     QEMU/libvirt 日志字节游标增量读取(固定目录)
@@ -389,6 +390,174 @@ function readCpuTemp(): array
         return ['celsius' => round($max / 1000, 1), 'sensor' => $name . '/max'];
     }
     return ['celsius' => null, 'sensor' => null];
+}
+
+function readCgroupMemory(string $group): ?int
+{
+    $current = trim((string) @file_get_contents($group . '/memory.current'));
+    if (!is_numeric($current)) {
+        return null;
+    }
+    $inactiveFile = 0;
+    foreach (@file($group . '/memory.stat', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        if (preg_match('/^inactive_file\s+(\d+)$/', $line, $matches)) {
+            $inactiveFile = (int) $matches[1];
+            break;
+        }
+    }
+    return max(0, (int) $current - $inactiveFile);
+}
+
+function readMemoryBreakdown(): ?array
+{
+    $values = [];
+    foreach (@file('/proc/meminfo', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        if (preg_match('/^(\w+):\s+(\d+)\s+kB$/', $line, $matches)) {
+            $values[$matches[1]] = (int) $matches[2] * 1024;
+        }
+    }
+    $total = $values['MemTotal'] ?? null;
+    $available = $values['MemAvailable'] ?? null;
+    if ($total === null || $available === null) {
+        return null;
+    }
+    $docker = readCgroupMemory('/sys/fs/cgroup/docker');
+    $vm = readCgroupMemory('/sys/fs/cgroup/machine');
+    $used = max(0, $total - $available);
+    $system = max(0, $used - ($docker ?? 0) - ($vm ?? 0));
+    $cache = ($values['Buffers'] ?? 0) + ($values['Cached'] ?? 0) + ($values['SReclaimable'] ?? 0);
+    return [
+        'totalBytes' => $total,
+        'availableBytes' => $available,
+        'systemBytes' => $system,
+        'dockerBytes' => $docker,
+        'vmBytes' => $vm,
+        'cacheBytes' => $cache,
+    ];
+}
+
+function readCpuPowerCounter(): ?array
+{
+    foreach (glob('/sys/class/powercap/intel-rapl:*/name') ?: [] as $nameFile) {
+        if (!str_starts_with(trim((string) @file_get_contents($nameFile)), 'package-')) {
+            continue;
+        }
+        $zone = dirname($nameFile);
+        $energy = trim((string) @file_get_contents($zone . '/energy_uj'));
+        $range = trim((string) @file_get_contents($zone . '/max_energy_range_uj'));
+        if (!is_numeric($energy) || !is_numeric($range)) {
+            continue;
+        }
+        return [
+            'energyUj' => $energy,
+            'maxEnergyRangeUj' => $range,
+            'sensor' => basename($zone),
+        ];
+    }
+    return null;
+}
+
+function intelGpuName(): string
+{
+    $lines = preg_split('/\r?\n/', (string) @shell_exec(PATH_ENV . ' lspci -D -nn 2>/dev/null')) ?: [];
+    foreach ($lines as $line) {
+        if (stripos($line, 'Intel') === false
+            || !preg_match('/(VGA compatible controller|3D controller|Display controller)(?:\s*\[[0-9a-f]+\])?:\s*(.+)$/i', $line, $matches)) {
+            continue;
+        }
+        return trim($matches[2]);
+    }
+    return 'Intel GPU';
+}
+
+function readIntelGpus(): array
+{
+    if (!is_executable('/usr/bin/intel_gpu_top')) {
+        return [];
+    }
+    $output = (string) @shell_exec(
+        PATH_ENV . ' timeout 4 /usr/bin/intel_gpu_top -J -n 2 -s 500 2>/dev/null'
+    );
+    // 部分 intel_gpu_top 版本的多样本 JSON 在相邻 period 对象间漏逗号
+    $output = preg_replace('/\}\s*\n(\{\s*"period")/', "},\n$1", $output) ?? $output;
+    $samples = json_decode($output, true);
+    if (!is_array($samples) || $samples === []) {
+        return [];
+    }
+    $sample = end($samples);
+    if (!is_array($sample)) {
+        return [];
+    }
+    $engines = [];
+    $utilization = 0.0;
+    foreach (($sample['engines'] ?? []) as $name => $engine) {
+        if (!is_array($engine) || !is_numeric($engine['busy'] ?? null)) {
+            continue;
+        }
+        $busy = max(0.0, min(100.0, (float) $engine['busy']));
+        $engines[] = ['name' => (string) $name, 'percent' => $busy];
+        $utilization = max($utilization, $busy);
+    }
+    return [[
+        'id' => 'intel-0',
+        'name' => intelGpuName(),
+        'driver' => 'intel',
+        'utilizationPercent' => $utilization,
+        'memoryUtilizationPercent' => null,
+        'memoryUsedBytes' => null,
+        'memoryTotalBytes' => null,
+        'powerWatts' => is_numeric($sample['power']['GPU'] ?? null) ? (float) $sample['power']['GPU'] : null,
+        'frequencyMHz' => is_numeric($sample['frequency']['actual'] ?? null) ? (float) $sample['frequency']['actual'] : null,
+        'temperatureCelsius' => null,
+        'engines' => $engines,
+    ]];
+}
+
+function readNvidiaGpus(): array
+{
+    if (!is_executable('/usr/bin/nvidia-smi')) {
+        return [];
+    }
+    $fields = 'name,utilization.gpu,utilization.memory,memory.used,memory.total,power.draw,clocks.sm,temperature.gpu';
+    $output = (string) @shell_exec(
+        PATH_ENV . ' timeout 3 /usr/bin/nvidia-smi --query-gpu=' . $fields . ' --format=csv,noheader,nounits 2>/dev/null'
+    );
+    $gpus = [];
+    foreach (preg_split('/\r?\n/', trim($output)) ?: [] as $index => $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+        $values = array_map('trim', str_getcsv($line));
+        if (count($values) !== 8) {
+            continue;
+        }
+        $number = static fn(string $value): ?float => is_numeric($value) ? (float) $value : null;
+        $memoryUsed = $number($values[3]);
+        $memoryTotal = $number($values[4]);
+        $gpus[] = [
+            'id' => 'nvidia-' . $index,
+            'name' => $values[0],
+            'driver' => 'nvidia',
+            'utilizationPercent' => $number($values[1]),
+            'memoryUtilizationPercent' => $number($values[2]),
+            'memoryUsedBytes' => $memoryUsed === null ? null : (int) round($memoryUsed * 1048576),
+            'memoryTotalBytes' => $memoryTotal === null ? null : (int) round($memoryTotal * 1048576),
+            'powerWatts' => $number($values[5]),
+            'frequencyMHz' => $number($values[6]),
+            'temperatureCelsius' => $number($values[7]),
+            'engines' => [],
+        ];
+    }
+    return $gpus;
+}
+
+function readSystemMetrics(): array
+{
+    return [
+        'cpu' => readCpuPowerCounter(),
+        'memory' => readMemoryBreakdown(),
+        'gpus' => array_merge(readIntelGpus(), readNvidiaGpus()),
+    ];
 }
 
 /**
@@ -2852,6 +3021,10 @@ if ($method === 'GET') {
 
     if ($action === 'networkinfo') {
         ok(readNetworkInfo());
+    }
+
+    if ($action === 'systemmetrics') {
+        ok(readSystemMetrics());
     }
 
     if ($action === 'vminfo') {
