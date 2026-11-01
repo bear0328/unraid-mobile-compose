@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.28/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.29(2026-11-01)
+
+- 全端 App 图标改为橙色圆形底、深色粗 U 与阵列状态灯，移除 Unraid 原版条形标志，提高小尺寸辨识度与品牌区分度。原生版本为 TestFlight 2.0.0(82)
 
 ### v1.3.28(2026-10-31)
 

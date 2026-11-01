@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.29] - 2026-11-01
+
+### Changed
+
+- Replaces the app icon across all clients with an orange circular background, a bold dark U, and array status lights. The original Unraid-style bars are removed for better small-size recognition and visual distinction. Native changes ship in TestFlight 2.0.0 (82)
+
 ## [1.3.28] - 2026-10-31
 
 ### Added
