@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.30] - 2026-11-07
+
+### Added
+
+- Native plugin details now include update notes. During update checks, compose-api extracts and caches newly added `CHANGES` entries from the updated `.plg`, with an explicit message when the author provides no notes. **Re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (85)
+
+### Fixed
+
+- Manually refreshing Containers now dismisses completed update-all and batch-update result panels while preserving progress and logs for running tasks
+- Dashboard falls back to local version-only metadata when auxiliary GraphQL fields fail, avoiding transient page errors during unraid-api restarts or Mothership interruptions. Authentication, network, and core-query failures remain visible
+
 ## [1.3.29] - 2026-11-01
 
 ### Changed

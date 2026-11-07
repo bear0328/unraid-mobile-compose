@@ -128,6 +128,25 @@ function pluginVersion(SimpleXMLElement $dom): string
     return $version;
 }
 
+function pluginUpdateNotes(string $currentVersion, string $currentChanges, string $latestChanges): ?string
+{
+    $latestChanges = trim($latestChanges);
+    if ($latestChanges === '') {
+        return null;
+    }
+    $currentChanges = trim($currentChanges);
+    $position = $currentChanges !== '' ? strpos($latestChanges, $currentChanges) : false;
+    if ($position !== false) {
+        $notes = trim(substr($latestChanges, 0, $position));
+    } else {
+        $marker = '/^\s*#{1,6}\s*' . preg_quote($currentVersion, '/') . '(?:\s*#+)?\s*$/m';
+        $notes = preg_match($marker, $latestChanges, $matches, PREG_OFFSET_CAPTURE) === 1
+            ? trim(substr($latestChanges, 0, $matches[0][1]))
+            : $latestChanges;
+    }
+    return $notes === '' ? null : mb_substr($notes, 0, 16000);
+}
+
 function canCheck(SimpleXMLElement $dom): bool
 {
     return trim((string) ($dom->attributes()['pluginURL'] ?? '')) !== '';
@@ -239,6 +258,11 @@ function checkPlugin(string $id, array &$cache): string
         $current = pluginVersion($installedXml);
         $latest = pluginVersion($latestXml);
         $entry['latestVersion'] = $latest;
+        $entry['updateNotes'] = pluginUpdateNotes(
+            $current,
+            isset($installedXml->CHANGES) ? (string) $installedXml->CHANGES : '',
+            isset($latestXml->CHANGES) ? (string) $latestXml->CHANGES : ''
+        );
         $entry['statusMessage'] = compatibility($latestXml);
         if ($entry['statusMessage'] !== null) {
             $entry['status'] = 'incompatible';

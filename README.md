@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.30 (2026-11-07)
+
+- Native plugin details now show changes introduced between the installed and latest versions. compose-api is updated, so **re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (85)
+- Manually refreshing Containers dismisses completed update result panels, while Dashboard falls back to local version metadata when auxiliary fields fail during unraid-api restarts
 
 ### v1.3.29 (2026-11-01)
 

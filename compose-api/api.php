@@ -1322,6 +1322,9 @@ function listPlugins(): array
             'version' => $version,
             'canCheck' => $canCheck,
             'latestVersion' => is_string($saved['latestVersion'] ?? null) ? $saved['latestVersion'] : null,
+            'updateNotes' => $status === 'updateAvailable' && is_string($saved['updateNotes'] ?? null)
+                ? $saved['updateNotes']
+                : null,
             'status' => $status,
             'statusMessage' => is_string($saved['statusMessage'] ?? null) ? $saved['statusMessage'] : null,
             'managed' => pluginManaged($id),

@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.29/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.30(2026-11-07)
+
+- 原生插件详情新增「更新说明」，展示当前版本到最新版本之间的新增内容；compose-api 已更新，**升级后需重跑安装脚本**。原生版本为 TestFlight 2.0.0(85)
+- 容器页手动刷新会清除已完成的更新结果卡；总览辅助元信息失败时自动降级为本地版本查询，减少 unraid-api 重启期间的瞬时错误
 
 ### v1.3.29(2026-11-01)
 
