@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.32] - 2026-11-15
+
+### Added
+
+- New compose-api `GET ?action=capabilities` endpoint reports Unraid/PHP versions, api.php hashes for the boot copy and the live copy, the boot-restore error log, and availability of 11 Unraid-internal dependencies. The Debug page gains a host-capabilities card that degrades affected features instead of failing at runtime, and `scripts/verify-host-compat.sh` runs the same checks on the host
+- The install script supports `--local-only` so OS-upgrade recovery never downloads the older pinned release over local fixes, and download checksums can now be read from `compose-api/SHA256SUMS`
+
+### Changed
+
+- The boot-restore hook no longer fails silently: it creates the target directory, logs failures to `restore-error.log`, and uses begin/end markers with range deletion so repeated installs stay idempotent without touching other `go` lines
+
+### Fixed
+
+- deploy-stable.sh resolves the real remote path with `readlink -f` before rsync, because Unraid 7.4 ships rsync 3.5, which refuses to follow the nobody-owned `/mnt/user/appdata` symlink to `../cache/appdata`
+
 ## [1.3.31] - 2026-11-15
 
 ### Changed

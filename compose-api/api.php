@@ -22,6 +22,10 @@ declare(strict_types=1);
  *       外泄不泄 key 本身;无前缀的旧明文格式自动兼容(重跑安装脚本即升级为哈希)。
  *
  * 端点:
+ *   GET  ?action=capabilities             宿主能力自检:Unraid/PHP 版本、api.php 正本与执行位置
+ *                                         sha256、go 恢复错误日志(restore-error.log)、各 Unraid
+ *                                         内部依赖可用性。只读、不执行外部命令、不联网;
+ *                                         前端按 deps 降级,OS 升级后不必逐项人工排查
  *   GET  ?action=cputemp                    CPU 温度(续 51:直读 /sys/class/hwmon CPU 传感器,
  *                                           纯内核 sysfs 不碰 smartctl/块设备,全盘 standby 不唤盘。
  *                                           这是续 46.5 "GraphQL temperature 唤盘红线"的安全替代)
@@ -3039,10 +3043,69 @@ function runServerPower(array $body): void
     ok(['accepted' => true, 'operation' => $operation]);
 }
 
+/**
+ * 宿主能力自检:只读、不执行外部命令(docker/emcmd 只查文件存在性)、不联网。
+ * 用途:Unraid OS 升级后,前端按 deps 降级对应功能,而不是运行时报错;
+ * apiSha256 与 bootApiSha256 不一致说明执行位置与正本不同步(可能恢复成旧版)。
+ */
+function readCapabilities(): array
+{
+    $bootDir = '/boot/config/plugins/unraid-mobile';
+    $unraidVersion = '';
+    if (is_file('/etc/unraid-version')) {
+        $ini = @parse_ini_file('/etc/unraid-version');
+        $unraidVersion = trim((string) ($ini['version'] ?? ''));
+    }
+
+    // go 恢复钩子落盘的错误日志:存在即上次启动恢复有异常;截断回传,避免异常大文件撑爆响应
+    $restoreError = null;
+    $restoreLog = $bootDir . '/restore-error.log';
+    if (is_file($restoreLog)) {
+        $raw = trim((string) @file_get_contents($restoreLog));
+        if ($raw !== '') {
+            $restoreError = strlen($raw) > 2000 ? substr($raw, 0, 2000) . '…' : $raw;
+        }
+    }
+
+    $sha = static function (string $file): ?string {
+        if (!is_file($file)) {
+            return null;
+        }
+        $hash = @hash_file('sha256', $file);
+        return is_string($hash) && $hash !== '' ? $hash : null;
+    };
+
+    return [
+        'unraidVersion' => $unraidVersion,
+        'phpVersion' => PHP_VERSION,
+        'apiSha256' => $sha(__FILE__),
+        'bootApiSha256' => $sha($bootDir . '/api.php'),
+        'restoreError' => $restoreError,
+        'deps' => [
+            'createDocker' => is_file(CA_CREATE_DOCKER),
+            'updateContainerScript' => is_file(DOCKER_UPDATE_SCRIPT),
+            'dockerCli' => is_executable(DOCKER),
+            'emcmd' => is_executable(EMCMD),
+            'pluginCli' => is_executable('/usr/local/sbin/plugin'),
+            'pluginWorker' => is_file(__DIR__ . '/plugin-worker.php'),
+            'updateStatusWriter' => is_file(__DIR__ . '/update-status.php'),
+            'updateStatusCache' => is_file(UPDATE_STATUS_FILE),
+            'indexBuilder' => is_file(INDEX_BUILDER),
+            'disksIni' => is_file(DISKS_INI_FILE),
+            'varIni' => is_file(ARRAY_VAR_FILE),
+        ],
+    ];
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
     $action = (string) ($_GET['action'] ?? '');
+
+    // 宿主能力自检:只读、不依赖 PROJECTS_DIR,放在最前
+    if ($action === 'capabilities') {
+        ok(readCapabilities());
+    }
 
     // 【续 51】CPU 温度(sysfs,不唤盘),放在栈相关 action 之前(不需要 PROJECTS_DIR)
     if ($action === 'cputemp') {

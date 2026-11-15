@@ -6,6 +6,8 @@
 #   bash install-compose-api.sh <unRAID-apiKey>     # 直接给 key
 #   bash install-compose-api.sh                     # 交互式输入 key(不回显)
 #   bash install-compose-api.sh -y [apiKey]         # 跳过风险确认(自动化用)
+#   bash install-compose-api.sh --local-only -y <key>
+#         只用脚本同目录的本地文件,绝不走远程下载 —— Unraid OS 升级后的恢复/重装必用
 #
 # ⚠️ 风险说明(续 57,运行前必读):
 #   本脚本会修改 unRAID 开机脚本 /boot/config/go —— 它是系统启动时执行的核心
@@ -27,15 +29,25 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="3141a4775c21857524d2d4a80af490e719900975f2f176477089db80c2a1e677"
+EXPECTED_API_SHA256="1d79f7a604054bec8e061999cbe70f59f87179f0af132a287ac0a9ddae06eb5e"
 EXPECTED_WORKER_SHA256="af1e7ca0db4807feebc6ba564c9630ee8d41580a6787ee8c28df90ca4849b150"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"
 EXEC_DIR="/usr/local/emhttp/plugins/compose.manager"
 GO_FILE="/boot/config/go"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 下载校验值:默认用上方内置值;同目录存在 SHA256SUMS 时以它为准。
+# 以后发布新版只需更新 RAW_URL 的 tag 与 SHA256SUMS,不必再改本脚本里的哈希。
+if [ -f "$SCRIPT_DIR/SHA256SUMS" ]; then
+    _api_sum=$(awk '$2=="api.php" {print $1}' "$SCRIPT_DIR/SHA256SUMS")
+    _worker_sum=$(awk '$2=="plugin-worker.php" {print $1}' "$SCRIPT_DIR/SHA256SUMS")
+    [ -n "$_api_sum" ] && EXPECTED_API_SHA256="$_api_sum"
+    [ -n "$_worker_sum" ] && EXPECTED_WORKER_SHA256="$_worker_sum"
+    unset _api_sum _worker_sum
+fi
 
 info() { echo "[install] $*"; }
 die()  { echo "[install] ERROR: $*" >&2; exit 1; }
@@ -46,12 +58,20 @@ die()  { echo "[install] ERROR: $*" >&2; exit 1; }
 请先在 unRAID 应用市场(Community Applications)安装 compose.manager,再运行本脚本。"
 [ -S /var/run/php-fpm.sock ] || echo "[install] 警告: /var/run/php-fpm.sock 不存在,php-fpm 未运行?装完后 compose-api 会 502"
 
-# ---------- 0.5 风险确认(续 57:改 /boot/config/go 前必须显式确认) ----------
+# ---------- 0.5 参数解析 ----------
+# -y/--yes      跳过风险确认(自动化用)
+# --local-only  只用脚本同目录的本地文件,绝不走远程下载。
+#               Unraid OS 升级后的恢复/重装场景必须加它:RAW_URL 固定旧版本 tag,
+#               走远程会把宿主上未发布的本地修复(如 indexBuildLockValid)覆盖回旧版。
 ASSUME_YES=0
-if [ "${1:-}" = "-y" ] || [ "${1:-}" = "--yes" ]; then
-    ASSUME_YES=1
-    shift
-fi
+LOCAL_ONLY=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -y|--yes) ASSUME_YES=1; shift ;;
+        --local-only) LOCAL_ONLY=1; shift ;;
+        *) break ;;
+    esac
+done
 if [ "$ASSUME_YES" != "1" ]; then
     cat << 'EOF'
 
@@ -87,6 +107,8 @@ info "key 文件: $PLUGIN_DIR/apikey (600,sha256 哈希)"
 if [ -f "$SCRIPT_DIR/api.php" ]; then
     cp "$SCRIPT_DIR/api.php" "$PLUGIN_DIR/api.php"
     info "api.php 来自脚本同目录"
+elif [ "$LOCAL_ONLY" = "1" ]; then
+    die "--local-only: 脚本同目录没有 api.php,已中止(不从远程下载,避免旧版本覆盖本地修复)"
 elif [ -n "$RAW_URL" ]; then
     curl -fsSL "$RAW_URL" -o "$PLUGIN_DIR/api.php" || die "下载 api.php 失败: $RAW_URL"
     # 【续 50 D4-1】sha256 校验,不符即中止(本地同目录提供的 api.php 不校验,便于开发迭代)
@@ -104,6 +126,8 @@ info "api.php: 正本 $PLUGIN_DIR/api.php → 执行位置 $EXEC_DIR/api.php"
 if [ -f "$SCRIPT_DIR/plugin-worker.php" ]; then
     cp "$SCRIPT_DIR/plugin-worker.php" "$PLUGIN_DIR/plugin-worker.php"
     info "plugin-worker.php 来自脚本同目录"
+elif [ "$LOCAL_ONLY" = "1" ]; then
+    die "--local-only: 脚本同目录没有 plugin-worker.php,已中止(不从远程下载)"
 elif [ -n "$RAW_URL" ]; then
     WORKER_RAW_URL="${RAW_URL%/*}/plugin-worker.php"
     curl -fsSL "$WORKER_RAW_URL" -o "$PLUGIN_DIR/plugin-worker.php" || die "下载 plugin-worker.php 失败: $WORKER_RAW_URL"
@@ -124,6 +148,8 @@ info "plugin-worker.php: 正本 $PLUGIN_DIR/plugin-worker.php → 执行位置 $
 if [ -f "$SCRIPT_DIR/update-status.php" ]; then
     cp "$SCRIPT_DIR/update-status.php" "$PLUGIN_DIR/update-status.php"
     info "update-status.php 来自脚本同目录"
+elif [ "$LOCAL_ONLY" = "1" ]; then
+    echo "[install] 提示: --local-only 且同目录无 update-status.php,跳过(徽章即时回写不可用,其余功能正常)"
 elif [ -n "$RAW_URL" ]; then
     US_RAW_URL="${RAW_URL%/*}/update-status.php"
     if curl -fsSL "$US_RAW_URL" -o "$PLUGIN_DIR/update-status.php"; then
@@ -145,6 +171,8 @@ for f in update-file-index.sh register-index-cron.sh; do
     if [ -f "$SCRIPT_DIR/$f" ]; then
         cp "$SCRIPT_DIR/$f" "$PLUGIN_DIR/$f"
         info "$f 来自脚本同目录"
+    elif [ "$LOCAL_ONLY" = "1" ]; then
+        echo "[install] 提示: --local-only 且同目录无 $f,跳过(索引搜索不可用,其余功能正常)"
     else
         if curl -fsSL "${RAW_URL%/*}/$f" -o "$PLUGIN_DIR/$f"; then
             info "$f 下载自 ${RAW_URL%/*}/$f"
@@ -171,6 +199,7 @@ fi
 # 【续 88 2026-08-08】.op-running 清理行也纳入模式删除,否则重复安装会累积
 # 【续 123】crontab 注册行也纳入(/var/spool/cron 是 tmpfs,重启丢 → go 里重新注册)
 sed -i.unraid-mobile-bak \
+    -e '/# >>> unraid-mobile compose-api hook >>>/,/# <<< unraid-mobile compose-api hook <<</d' \
     -e '/【unraid-mobile/d' \
     -e '/tmpfs,重启后 api\.php 丢失/d' \
     -e '/compose\.manager\/api\.php/d' \
@@ -181,16 +210,34 @@ sed -i.unraid-mobile-bak \
     -e '/register-index-cron\.sh/d' \
     "$GO_FILE"
 cat >> "$GO_FILE" << 'EOF'
+# >>> unraid-mobile compose-api hook >>>
 # 【unraid-mobile】compose-api 恢复钩子(install-compose-api.sh 安装)
 # /usr/local/emhttp 是 tmpfs,重启后 api.php 丢失,从 flash 正本恢复
-cp /boot/config/plugins/unraid-mobile/api.php /usr/local/emhttp/plugins/compose.manager/api.php 2>/dev/null || true
-cp /boot/config/plugins/unraid-mobile/update-status.php /usr/local/emhttp/plugins/compose.manager/update-status.php 2>/dev/null || true
-cp /boot/config/plugins/unraid-mobile/plugin-worker.php /usr/local/emhttp/plugins/compose.manager/plugin-worker.php 2>/dev/null || true
-chmod 0755 /usr/local/emhttp/plugins/compose.manager/plugin-worker.php 2>/dev/null || true
+# 恢复不再静默:先 mkdir -p 目标目录(插件尚未装上时也能恢复),失败写
+# /boot/config/plugins/unraid-mobile/restore-error.log —— 该文件存在即代表上次启动恢复有异常,
+# 跑 scripts/verify-host-compat.sh 复核,或按下文提示直接 cp 正本回去。
+_ume=/usr/local/emhttp/plugins/compose.manager
+_umb=/boot/config/plugins/unraid-mobile
+_uml="$_umb/restore-error.log"
+: > "$_uml"
+mkdir -p "$_ume" 2>>"$_uml"
+for _umf in api.php plugin-worker.php; do
+  if [ -f "$_umb/$_umf" ]; then
+    cp "$_umb/$_umf" "$_ume/$_umf" 2>>"$_uml" || echo "cp $_umf rc=$?" >>"$_uml"
+  else
+    echo "missing 正本 $_umf" >>"$_uml"
+  fi
+done
+# update-status.php 可选(老发布物没有),有则恢复,缺了不记错误
+[ -f "$_umb/update-status.php" ] && cp "$_umb/update-status.php" "$_ume/update-status.php" 2>>"$_uml"
+chmod 0755 "$_ume/plugin-worker.php" 2>>"$_uml"
+[ -s "$_uml" ] || rm -f "$_uml"
+unset _ume _umb _uml _umf
 # 清 .op-running 残留锁(续 88 2026-08-08):projects 在 flash 盘持久,宿主重启/进程被杀后残留会让该栈永久 409
 rm -f /boot/config/plugins/compose.manager/projects/*/.op-running
 # 【unraid-mobile】文件索引 cron(续 123-125):/var/spool/cron 是 tmpfs,重启重注册;脚本内以 index-enabled flag 为条件、读 index-hour 整点(设置页可配)
 /boot/config/plugins/unraid-mobile/register-index-cron.sh >/dev/null 2>&1 || true
+# <<< unraid-mobile compose-api hook <<<
 EOF
 info "go 钩子已更新(旧备份: $GO_FILE.unraid-mobile-bak)"
 
@@ -204,6 +251,11 @@ cat << 'EOF'
 加完重建容器,App 的 容器/VM → Compose tab 即可看到栈列表。
 
 go 文件备份: /boot/config/go.unraid-mobile-bak(如需还原直接覆盖回去)
+恢复排错: 重启后若 compose-api 502/404,先看
+      /boot/config/plugins/unraid-mobile/restore-error.log(存在即恢复有异常),
+      再跑 scripts/verify-host-compat.sh 做全项体检。
+Unraid OS 升级后恢复: 把本目录整个拷到宿主,加 --local-only 重跑本脚本;
+      不要在同目录没有 api.php 时走远程分支(RAW_URL 是固定旧版本 tag,会覆盖本地修复)。
 卸载: 删掉 /boot/config/plugins/unraid-mobile/、
       /usr/local/emhttp/plugins/compose.manager/api.php、update-status.php 和 plugin-worker.php、
       /boot/config/go 里【unraid-mobile】标记的行、

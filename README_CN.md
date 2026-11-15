@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,12 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.32(2026-11-15)
+
+- 调试页新增「宿主能力」卡片，由 compose-api 新增 `?action=capabilities` 提供：Unraid/PHP 版本、正本与执行位置 api.php 哈希核对、启动恢复错误和各内部依赖可用性，Unraid OS 升级后按依赖明确降级而不是运行时报错；宿主侧可用 `scripts/verify-host-compat.sh` 做同样检查
+- 安装脚本新增 `--local-only`，OS 升级恢复时不再用远程固定旧版覆盖本地修复，校验值可外置到 `SHA256SUMS`；启动恢复钩子失败写入 `restore-error.log`，并通过首尾标记范围删除保证重复安装幂等
+- deploy-stable.sh 改用 `readlink -f` 解析真实路径，适配 Unraid 7.4 自带的 rsync 3.5 拒绝跟随 nobody 拥有的 `/mnt/user/appdata` 符号链接。compose-api 与安装脚本已更新，**升级后需重跑安装脚本**
 
 ### v1.3.31(2026-11-15)
 

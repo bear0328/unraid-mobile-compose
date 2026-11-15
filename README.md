@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,12 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.32 (2026-11-15)
+
+- Debug page adds a host-capabilities card backed by a new compose-api `?action=capabilities` endpoint: Unraid/PHP versions, boot-vs-live api.php hash check, boot-restore errors, and per-dependency availability so features degrade clearly after an Unraid OS upgrade. A host-side `scripts/verify-host-compat.sh` runs the same checks over SSH
+- Install script adds `--local-only` so OS-upgrade recovery never pulls the older pinned release over local fixes, plus optional `SHA256SUMS` checksums; the boot-restore hook now logs failures to `restore-error.log` and stays idempotent through marker-based range deletion
+- deploy-stable.sh resolves the real remote path with `readlink -f` because Unraid 7.4 ships rsync 3.5, which refuses to follow the nobody-owned `/mnt/user/appdata` symlink. compose-api and the install script are updated, so **re-run the install script after upgrading**
 
 ### v1.3.31 (2026-11-15)
 

@@ -2,6 +2,21 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.32] - 2026-11-15
+
+### 新增
+
+- compose-api 新增 `GET ?action=capabilities`，返回 Unraid/PHP 版本、正本与执行位置 api.php 哈希、启动恢复错误日志以及 11 项 Unraid 内部依赖可用性；调试页新增「宿主能力」卡片，按依赖降级对应功能而不是运行时报错，宿主侧可用 `scripts/verify-host-compat.sh` 做同样检查
+- 安装脚本新增 `--local-only`，OS 升级恢复时不再用远程固定旧版覆盖本地修复；下载校验值可外置到 `compose-api/SHA256SUMS`
+
+### 变更
+
+- 启动恢复钩子不再静默失败：先创建目标目录，失败写入 `restore-error.log`，并通过首尾标记范围删除保证重复安装幂等，不影响 `go` 里的其他行
+
+### 修复
+
+- deploy-stable.sh 在 rsync 前用 `readlink -f` 解析真实路径，适配 Unraid 7.4 自带的 rsync 3.5 拒绝跟随 nobody 拥有的 `/mnt/user/appdata` 符号链接
+
 ## [1.3.31] - 2026-11-15
 
 ### 变更
