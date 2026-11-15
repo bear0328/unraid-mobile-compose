@@ -2,6 +2,17 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.4.0] - 2026-11-15
+
+### 新增
+
+- 全功能 Compose 改为 `setup + Web + router` 三服务：一次性特权 setup 安装并校验宿主后端，Web 保持非特权；受控 router 按管理员登记的 `routeId + appUrl` 白名单转发 GraphQL、WebSocket、Compose、文件、DAV 和系统日志
+- Web 多服务器支持独立 DAV/日志密码，服务器配置、查询缓存和冷启动播种按目标隔离；无 compose-api 或临时不可用时，容器更新安全回退 GraphQL
+
+### 安全
+
+- 未知路由、任意上游、重复地址和缺失凭据全部 fail-closed；修复切换服务器时旧响应、统计流、缓存、上传下载和危险确认串机，以及 DAV 带端口 Host 的改写问题
+
 ## [1.3.33] - 2026-11-15
 
 ### 变更

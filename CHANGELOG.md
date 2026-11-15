@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.0] - 2026-11-15
+
+### Added
+
+- Full-featured Compose now uses `setup + Web + router`: a one-shot privileged setup installs and verifies the host agent while Web stays unprivileged. The controlled router forwards GraphQL, WebSocket, Compose, files, DAV, and syslog only for administrator-registered `routeId + appUrl` pairs
+- Web multi-server support adds per-server DAV/syslog credentials and isolates configuration, query caches, and cold-start seeds by target. Container updates safely fall back to GraphQL when compose-api is absent or temporarily unavailable
+
+### Security
+
+- Unknown routes, arbitrary upstreams, duplicate addresses, and missing credentials now fail closed. Fixed stale responses, stats streams, caches, transfers, and destructive confirmations crossing servers during switches, plus DAV rewriting for Host values with explicit ports
+
 ## [1.3.33] - 2026-11-15
 
 ### Changed

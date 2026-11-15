@@ -61,7 +61,38 @@ opt-in (only container-stop is on by default):
 Disk events follow the existing 30-minute disk-cache cadence — monitoring never spins up
 sleeping disks. Template variables: `{{container}} {{state}} {{server}} {{time}} {{category}}`.
 
-## Quick start (Docker Hub image)
+## Quick start (full-featured Compose)
+
+> The setup container runs once and exits; the Web container has no host privileges. Setup modifies
+> `/boot/config/go` and may install Compose Manager Plus. Read the Pro host-agent risk notice first.
+
+```bash
+mkdir -p /mnt/user/appdata/unraid-mobile/compose/secrets
+cd /mnt/user/appdata/unraid-mobile/compose
+curl -fsSL -O https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/.env.example
+# Edit .env: set UNRAID_UPSTREAM / UNRAID_SERVER_URL and confirm ALLOW_HOST_INSTALL=YES
+```
+
+Create the three secret files without echoing values or writing them to shell history:
+
+```bash
+read -r -s -p 'unRAID API key: ' SECRET; echo; printf '%s' "$SECRET" > secrets/unraid_api_key
+read -r -s -p 'WebDAV password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/dav_password
+read -r -s -p 'Syslog password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/log_password
+unset SECRET
+chmod 600 .env secrets/*
+docker compose up -d
+# If setup fails, the Web container stays stopped; inspect the concrete error:
+docker compose logs setup
+```
+
+Open `http://<unraid-IP>:3999`, enter the same API key and WebDAV/syslog passwords in Settings, then
+activate your Pro License key. Secret files remain user-owned with mode 600; the host `apikey` stores
+only a SHA-256 hash and setup reports contain no plaintext secrets. Re-running `docker compose up -d`
+is idempotent and does not overwrite the `serverUrl` later saved by the UI.
+
+## Basic features only: docker run
 
 ```bash
 docker run -d \
@@ -84,17 +115,6 @@ Open `http://<unraid-IP>:3999`, go to "Settings" and fill in:
 > the server.
 
 Image tags: `latest` (newest stable) / `1.3.8` (pinned version). linux/amd64 only (unRAID platform).
-
-### Alternative: docker-compose
-
-Use the ready-made [`docker-compose.yml`](docker-compose.yml) in this repo:
-
-```bash
-curl -fsSL -o docker-compose.yml \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/docker-compose.yml
-# edit UNRAID_UPSTREAM first, then:
-docker compose up -d
-```
 
 ### Alternative: unRAID Docker UI template
 
@@ -124,29 +144,12 @@ enabled per mount:
 | Host system logs | `-v /var/log:/hostlog:ro` + log password file | Same idea, `.logpasswd` |
 | Compose stacks / CPU temperature (Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + host agent | See next section |
 
-Full docker-compose example:
-
-```yaml
-services:
-  unraid-mobile:
-    image: bear0328/unraid-mobile:latest
-    container_name: unraid-mobile
-    ports:
-      - "3999:80"
-    environment:
-      - UNRAID_UPSTREAM=http://192.168.1.100:8001  # change to your unRAID address
-    volumes:
-      - /mnt/user/appdata/unraid-mobile/config:/usr/share/nginx/html/config
-      # uncomment as needed:
-      # - /mnt/user:/mnt/user
-      # - /mnt/cache:/mnt/cache
-      # - /mnt:/mnt:ro  # read-only disk/pool browsing (Shares → Disks tab)
-      # - /var/log:/hostlog:ro
-      # - /var/run/php-fpm.sock:/hostrun/php-fpm.sock
-    restart: unless-stopped
-```
+The single source of truth is [`docker-compose.yml`](docker-compose.yml), which enables the full mount set by default.
 
 ## Pro host agent (compose-api): Compose / plugins / CPU temperature
+
+Full-featured Compose performs this installation and verification automatically. The manual commands
+below are only for the basic `docker run` path or troubleshooting.
 
 Compose, plugin management, and CPU temperature (all Pro features) rely on a small host-side component
 (`api.php`, executed as root via the host's php-fpm to run `docker compose`, the official `plugin` CLI,
@@ -161,8 +164,10 @@ with logs. Plugin-author scripts run as root: install only trusted sources. Remo
 cleanup are defined by each plugin. Unraid OS updates remain out of scope.
 
 > ⚠️ **Risk notice (read before installing)**
-> The install script modifies the following persistent host files (all tagged 【unraid-mobile】,
-> fully restorable):
+> The install script modifies the following persistent host files (unraid-mobile's own changes are
+> tagged 【unraid-mobile】):
+> - `Compose Manager Plus`: if missing, installed from a pinned commit in the plugin author's repository;
+>   the plugin manages its own files and configuration
 > - `/boot/config/go`: the boot script — a 6-line restore hook is appended so the Pro backend
 >   is restored after reboots and stale Compose locks are cleaned
 > - `/boot/config/plugins/unraid-mobile/api.php`: flash master of the Pro backend
@@ -170,7 +175,7 @@ cleanup are defined by each plugin. Unraid OS updates remain out of scope.
 > - `/boot/config/plugins/unraid-mobile/plugin-worker.php`: flash master of the plugin job worker
 > - `/boot/config/plugins/unraid-mobile/update-status.php`: flash master of the Compose
 >   update-badge write-back script
-> - `/boot/config/plugins/unraid-mobile/apikey`: API key stored as a sha256 hash (mode 600,
+> - `/boot/config/plugins/unraid-mobile/apikey`: API key stored as a sha256 hash (FAT permissions are mount-controlled,
 >   plaintext never touches the flash drive)
 > - `/boot/config/plugins/unraid-mobile/audit.log`: audit log of key api.php operations
 > - `/boot/config/go.unraid-mobile-bak`: automatic backup of `go` taken before any change
@@ -179,29 +184,35 @@ cleanup are defined by each plugin. Unraid OS updates remain out of scope.
 > - The original `/boot/config/go` is backed up to `/boot/config/go.unraid-mobile-bak` first
 > - Only tagged 【unraid-mobile】 hook lines are appended; none of your existing lines are touched
 > - The script asks you to type `YES` explicitly before doing anything
-> - Uninstall: delete `/boot/config/plugins/unraid-mobile/` and the tagged hook lines in `go`
->   to fully restore
+> - To remove the host agent, delete `/boot/config/plugins/unraid-mobile/` and the tagged hook lines
+>   in `go`. If you no longer need the automatically installed Compose Manager Plus, remove it separately
+>   through Unraid's plugin manager.
 >
 > If you do not accept any modification to the boot script, do not install — every free feature
 > works without it.
 
-Prerequisite: the **compose.manager** plugin installed from Community Applications.
+The free version needs no third-party Unraid plugins. The Pro host agent's only additional plugin
+dependency is **Compose Manager Plus** (its internal plugin ID remains `compose.manager`, sharing the
+same directories as the legacy plugin); **Community Applications itself is not required**. This single
+command creates a private temporary directory on Unraid and downloads the installer. The installer
+downloads the remaining agent files, verifying `api.php` and `plugin-worker.php` with SHA-256:
 
 ```bash
-# Run as root on the unRAID host
-mkdir -p /tmp/um-install && cd /tmp/um-install
-curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/install-compose-api.sh
-curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/api.php
-bash install-compose-api.sh
+# Run as root in an SSH session or terminal on the Unraid machine
+um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
+  && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.0/compose-api/install-compose-api.sh \
+  && bash "$um_install_dir/install-compose-api.sh"
 ```
 
-The script: risk confirmation (type YES) → checks compose.manager → interactively asks for the API
-key and writes it to `/boot/config/plugins/unraid-mobile/apikey` (mode 600, stored as a
-`sha256:` hash — the plaintext key never touches the flash drive) → installs api.php into
-the compose.manager plugin directory → backs up and appends the `/boot/config/go` restore hook.
-Idempotent, safe to re-run.
+The script: risk confirmation (type YES) → detects compose.manager (**skips when Plus or a
+compatible legacy version is already installed**; otherwise installs Compose Manager Plus from the
+author's repository through Unraid's official `plugin` command) → interactively asks for the API key and writes it to
+`/boot/config/plugins/unraid-mobile/apikey` (stored as a `sha256:` hash; FAT permissions are mount-controlled — the plaintext
+key never touches the flash drive) → installs api.php into the Compose Manager Plus plugin directory →
+backs up and appends the `/boot/config/go` restore hook. It is safe to re-run and never reinstalls
+an existing plugin. `--local-only` is for offline recovery; in that mode a missing Compose Manager Plus
+causes a clear error instead of a network install.
 
 Afterwards add the php-fpm.sock mount to the container and recreate it; the Compose tab and CPU
 temperature (once Pro is activated) are ready.
@@ -228,6 +239,11 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.4.0 (2026-11-15)
+
+- Full-featured Compose now uses `setup + Web + router`: one-shot host-agent setup, an unprivileged Web container, and whitelist-only protocol forwarding. Web multi-server adds independent DAV/syslog credentials with target-isolated queries, caches, connections, and destructive actions
+- Container updates safely fall back to GraphQL when compose-api is unavailable. Fixed stale responses, stats streams, caches, and port-qualified Host handling crossing targets; unknown routes, arbitrary upstreams, duplicate addresses, and missing credentials fail closed
 
 ### v1.3.33 (2026-11-15)
 
@@ -426,10 +442,12 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## FAQ
 
-**Q: Added multiple servers, but switching shows the same data or 401?**
-Known limitation: switching servers currently only swaps the API key — data requests still go
-through this container's same-origin proxy (i.e. the unRAID host running this container).
-Single-server usage is unaffected; direct cross-host connections are on the roadmap.
+**Q: How do I configure multiple servers?**
+Deploy the full Compose stack on every target unRAID. Under Settings → Server list, enter both the
+GraphQL `serverUrl` and the target container's `appUrl` (for example `http://192.168.1.100:3999`).
+Saving synchronizes a trusted route registry using the local DAV admin password. GraphQL, WebSocket,
+Compose, files and logs are routed by routeId; full configuration backups always stay on the entry
+host. Legacy entries without `appUrl` must be edited explicitly and never fall back to the local host.
 
 **Q: Where can I ask questions or give feedback?**
 Join the Telegram group: <https://t.me/+l1iA02ZkOK1lNmEx>, or open a GitHub issue.
