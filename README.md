@@ -145,6 +145,8 @@ enabled per mount:
 | Compose stacks / CPU temperature (Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + host agent | See next section |
 
 The single source of truth is [`docker-compose.yml`](docker-compose.yml), which enables the full mount set by default.
+Single-server deployments run only the one-shot setup and Web services; the router stays off. Enable it
+only for Web multi-server access with `docker compose --profile multi-server up -d`.
 
 ## Pro host agent (compose-api): Compose / plugins / CPU temperature
 
@@ -201,7 +203,7 @@ downloads the remaining agent files, verifying `api.php` and `plugin-worker.php`
 # Run as root in an SSH session or terminal on the Unraid machine
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.0/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.1/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/install-compose-api.sh"
 ```
 
@@ -239,6 +241,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.4.1 (2026-11-15)
+
+- Single-server Compose no longer starts or depends on the router. Web multi-server forwarding is opt-in through the `multi-server` profile, and Nginx starts normally when the router is absent
 
 ### v1.4.0 (2026-11-15)
 

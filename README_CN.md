@@ -136,6 +136,8 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-unraid-mobile.xml
 | Compose 栈管理 / CPU 温度(Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + 宿主后端 | 见下节 |
 
 完整 Compose 以 [`docker-compose.yml`](docker-compose.yml) 为唯一来源，默认启用上述挂载；不再在文档复制第二份示例。
+单服务器默认只运行一次性 setup 和 Web，不启动 router。只有需要 Web 多服务器时才执行
+`docker compose --profile multi-server up -d` 启用受控 router。
 
 ## Pro 宿主后端(compose-api):Compose / 插件管理 / CPU 温度
 
@@ -179,7 +181,7 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 Unraid 机器的 SSH/终端中以 root 执行
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.0/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.1/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/install-compose-api.sh"
 ```
 
@@ -213,6 +215,10 @@ um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.4.1(2026-11-15)
+
+- 单服务器 Compose 默认不再启动或依赖 router；Web 多服务器改用 `multi-server` profile 手动启用，Nginx 在 router 未启动时也能正常运行
 
 ### v1.4.0(2026-11-15)
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.1] - 2026-11-15
+
+### Changed
+
+- Single-server Compose no longer starts or depends on the router; Web multi-server forwarding is opt-in through the `multi-server` profile. Nginx resolves the optional router on demand so its absence cannot block Web startup
+
 ## [1.4.0] - 2026-11-15
 
 ### Added

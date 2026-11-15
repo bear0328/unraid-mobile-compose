@@ -2,6 +2,12 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.4.1] - 2026-11-15
+
+### 变更
+
+- 单服务器 Compose 默认不再启动或依赖 router；仅 `multi-server` profile 启用 Web 多服务器转发。Nginx 对可选 router 改为按需 DNS 解析，避免容器未启动时阻塞 Web
+
 ## [1.4.0] - 2026-11-15
 
 ### 新增

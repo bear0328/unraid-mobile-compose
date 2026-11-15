@@ -1,4 +1,5 @@
-# 默认全功能安装:setup 只运行一次并退出,Web 容器不持有宿主特权。
+# 默认单服务器安装:setup 只运行一次并退出,Web 容器不持有宿主特权。
+# 仅 Web 多服务器需要 router:docker compose --profile multi-server up -d
 # 用户需提供 .env 与三个 secret 文件;详见 README_CN.md。
 services:
   setup:
@@ -22,6 +23,7 @@ services:
   router:
     image: bear0328/unraid-mobile-router:${IMAGE_TAG:-latest}
     container_name: unraid-mobile-router
+    profiles: ["multi-server"]
     restart: unless-stopped
     user: "101:101"
     read_only: true
@@ -39,8 +41,6 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
-      router:
-        condition: service_healthy
     ports:
       - "3999:80"
     environment:
