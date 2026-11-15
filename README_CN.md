@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.30/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.31/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,11 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.31(2026-11-15)
+
+- 原生总览资源卡默认仅显示核心百分比或网络收发速率与轻量趋势，详细指标和控制项按需展开。原生版本为 TestFlight 2.0.0(87)
+- 文件索引在异常中断或宿主重启后可识别并清理 stale 锁，通过 PID 与进程命令避免误清进行中的构建。compose-api 与索引脚本已更新，**升级后需重跑安装脚本**
 
 ### v1.3.30(2026-11-07)
 

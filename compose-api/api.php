@@ -2880,6 +2880,33 @@ function parseSearchLines(string $out): array
  * 【续 130】enabled 语义 = 每日自动构建开(flag 只控 cron);索引搜索本身常开。
  * 条数与大小读 builder 写的 sidecar .meta(不扫 142MB 主文件);meta 缺失回退 filesize。
  */
+/**
+ * 索引构建锁是否有效:锁文件存在、其中 PID 对应的进程仍在、且确为构建脚本才算。
+ * 构建异常中断(宿主重启/kill -9)会留下 stale 锁与空 tmp,只认文件存在会让
+ * building 恒 true、App 永远「重建中…」;识别为 stale 时顺手清锁与本次遗留 tmp,
+ * 状态自愈。只读 /proc 与 cache 池文件,不执行外部命令、不唤盘。
+ */
+function indexBuildLockValid(): bool
+{
+    $lockFile = dirname(INDEX_FILE) . '/.index-building';
+    if (!is_file($lockFile)) {
+        return false;
+    }
+    $pid = (int) trim((string) @file_get_contents($lockFile));
+    if ($pid > 0 && is_dir('/proc/' . $pid)) {
+        $cmdline = @file_get_contents('/proc/' . $pid . '/cmdline');
+        // cmdline 读不到时保守视为存活(不误清进行中的构建);读得到却不含脚本名 = PID 复用
+        if ($cmdline === false || strpos((string) $cmdline, 'update-file-index.sh') !== false) {
+            return true;
+        }
+    }
+    @unlink($lockFile);
+    if ($pid > 0) {
+        @unlink(INDEX_FILE . '.tmp.' . $pid);
+    }
+    return false;
+}
+
 function indexStatus(): array
 {
     $meta = [];
@@ -2897,7 +2924,7 @@ function indexStatus(): array
             : (is_file(INDEX_FILE) ? (int) filemtime(INDEX_FILE) : null),
         'entries' => isset($meta['entries']) ? (int) $meta['entries'] : null,
         'sizeBytes' => is_file(INDEX_FILE) ? (int) filesize(INDEX_FILE) : null,
-        'building' => is_file(dirname(INDEX_FILE) . '/.index-building'),
+        'building' => indexBuildLockValid(),
         'hour' => indexHour(),
     ];
 }

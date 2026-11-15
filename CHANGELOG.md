@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.31] - 2026-11-15
+
+### Changed
+
+- Native Dashboard now condenses CPU, GPU, memory, network, disk, and Parity cards to core percentages or network RX/TX rates with lightweight trends. Models, thermals, capacities, per-disk details, and Parity controls move into expandable details. Native changes ship in TestFlight 2.0.0 (87)
+
+### Fixed
+
+- File-index status and the index builder now detect stale build locks by checking both the PID and process command, clean up only abandoned lock and temporary files, and recover after crashes or reboots without interrupting active builds or touching the formal index. compose-api and the index builder are updated, so **re-run the install script after upgrading**
+
 ## [1.3.30] - 2026-11-07
 
 ### Added

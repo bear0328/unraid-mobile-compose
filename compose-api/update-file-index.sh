@@ -14,13 +14,16 @@ LOCK_FILE="${INDEX_DIR}/.index-building"
 
 mkdir -p "$INDEX_DIR"
 
-# 防并发(cron 与手动 reindex 撞车):锁已存在且对应进程还活着就直接退出
+# 防并发(cron 与手动 reindex 撞车):锁已存在、对应进程还活着且确为构建脚本才退出;
+# 进程不在或 PID 已被复用 = stale 锁(异常中断残留),清掉后继续,不清理会让并发保护变永久自锁
 if [ -f "$LOCK_FILE" ]; then
     old_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo '')
-    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ] \
+        && tr '\0' ' ' < "/proc/$old_pid/cmdline" 2>/dev/null | grep -q 'update-file-index.sh'; then
         echo "index build already running (pid $old_pid), skip" >&2
         exit 0
     fi
+    rm -f "$LOCK_FILE" "${INDEX_FILE}.tmp.${old_pid}"
 fi
 echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE" "$TMP_FILE"' EXIT INT TERM
