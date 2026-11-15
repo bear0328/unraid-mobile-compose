@@ -29,9 +29,9 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/api.php"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="1d79f7a604054bec8e061999cbe70f59f87179f0af132a287ac0a9ddae06eb5e"
+EXPECTED_API_SHA256="923197b8a2fe50648fe1c9c1c754ca6516251f32a5f7d8cf0e15a0b2563e21fb"
 EXPECTED_WORKER_SHA256="af1e7ca0db4807feebc6ba564c9630ee8d41580a6787ee8c28df90ca4849b150"
 
 PLUGIN_DIR="/boot/config/plugins/unraid-mobile"

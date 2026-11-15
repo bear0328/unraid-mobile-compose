@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.33] - 2026-11-15
+
+### Changed
+
+- CA installs no longer forge `$_POST` and include Unraid's `CreateDocker.php`. The CA template XML is edited in place and written as a `my-<name>.xml` user template, then created through the official `update_container` script — the same path already used for container updates, with a manual `docker pull` first for progress logs. The install now requires a writable user-template directory and `update_container`; `CreateDocker.php` is no longer needed
+
 ## [1.3.32] - 2026-11-15
 
 ### Added

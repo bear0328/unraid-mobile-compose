@@ -191,9 +191,9 @@ Prerequisite: the **compose.manager** plugin installed from Community Applicatio
 # Run as root on the unRAID host
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -228,6 +228,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.3.33 (2026-11-15)
+
+- CA installs drop the `$_POST`/`CreateDocker.php` coupling: the CA template XML is written directly as a `my-<name>.xml` user template and created via the official `update_container` script (the same path as container updates), with `docker pull` run first for progress. compose-api is updated, so **re-run the install script after upgrading**
 
 ### v1.3.32 (2026-11-15)
 

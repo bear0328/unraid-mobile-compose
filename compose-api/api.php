@@ -44,8 +44,10 @@ declare(strict_types=1);
  *   GET  ?action=catemplate&url=X           feed 白名单内 Docker 模板;mask 配置不回传默认值
  *   GET  ?action=cajob&id=X                 CA 安装任务 running/log/result(严格任务 ID)
  *   PUT  {action:cainstall,templateUrl,values}
- *                                          重新校验 feed 与模板,仅新容器;独立 PHP worker 设置 $_POST
- *                                          并 include 官方 CreateDocker.php,最终按同名容器存在判成功
+ *                                          重新校验 feed 与模板,仅新容器;以 CA 模板直写用户模板
+ *                                          my-<name>.xml(不再伪造 $_POST/include CreateDocker.php),
+ *                                          独立 worker 先 docker pull 再调官方 update_container
+ *                                          创建并启动,最终按同名容器存在判成功
  *   PUT  {action: plugincheck|pluginupdateall}
  *   PUT  {action: pluginupdate|pluginremove, name}
  *   PUT  {action: plugininstall, url}       均返回 jobId,由独立 worker 串行调用官方 plugin CLI
@@ -128,7 +130,6 @@ const CA_APPS_MAX_BYTES = 33554432;
 const CA_APPS_CONNECT_TIMEOUT_SEC = 10;
 const CA_APPS_TOTAL_TIMEOUT_SEC = 60;
 const CA_TEMPLATE_MAX_BYTES = 2097152;
-const CA_CREATE_DOCKER = '/usr/local/emhttp/plugins/dynamix.docker.manager/include/CreateDocker.php';
 const CA_INSTALL_LOCK = PLUGIN_WORK_DIR . '/cainstall.lock';
 // 描述纯文本长度上限
 const CA_APPS_DESC_MAX = 1200;
@@ -2048,31 +2049,20 @@ function caDockerContainerExists(string $name): bool
     return $code === 0 && trim((string) ($lines[0] ?? '')) === '/' . $name;
 }
 
-function caInstallPost(SimpleXMLElement $dom, string $url, array $values): array
+/**
+ * 以 CA 模板 XML 为基础套用用户值,生成 Unraid 用户模板(my-<name>.xml)。
+ * 不再伪造 $_POST 并 include 官方 CreateDocker.php:直接改写模板节点,
+ * 产物与官方 postToXML 同构,交由 update_container 的 xmlToCommand 读取,
+ * 与容器更新共用同一条官方路径。本函数只校验并返回,不写文件;
+ * 落盘在 startCaInstallJob 完成全部冲突检查之后,避免覆盖他源同名模板。
+ */
+function caInstallUserTemplate(SimpleXMLElement $dom, string $url, array $values): array
 {
     $name = trim((string) $dom->Name);
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/D', $name)) {
         fail(422, 'CA 模板容器名不合法');
     }
-    $post = [];
-    $fields = [
-        'contName' => 'Name', 'contRepository' => 'Repository', 'contRegistry' => 'Registry',
-        'contNetwork' => 'Network', 'contShell' => 'Shell', 'contSupport' => 'Support',
-        'contProject' => 'Project', 'contReadMe' => 'ReadMe', 'contOverview' => 'Overview',
-        'contCategory' => 'Category', 'contWebUI' => 'WebUI', 'contIcon' => 'Icon',
-        'contExtraParams' => 'ExtraParams', 'contPostArgs' => 'PostArgs', 'contCPUset' => 'CPUset',
-        'contRequires' => 'Requires', 'contExtraNetworks' => 'ExtraNetworks', 'contMyIP' => 'MyIP',
-        'contMyMAC' => 'MyMAC', 'contMemory' => 'Memory', 'contDonateText' => 'DonateText',
-        'contDonateLink' => 'DonateLink',
-    ];
-    foreach ($fields as $key => $tag) {
-        $post[$key] = (string) $dom->{$tag};
-    }
-    $post['contName'] = $name;
-    $post['contRepository'] = trim($post['contRepository']);
-    $post['contShell'] = $post['contShell'] !== '' ? $post['contShell'] : 'sh';
-    $post['contPrivileged'] = strtolower((string) $dom->Privileged) === 'true' ? 'on' : '';
-    $post['contTemplateURL'] = $url;
+    $repository = trim((string) $dom->Repository);
 
     $configs = [];
     $allowed = [];
@@ -2102,10 +2092,6 @@ function caInstallPost(SimpleXMLElement $dom, string $url, array $values): array
         }
     }
 
-    $arrays = ['confName', 'confTarget', 'confDefault', 'confMode', 'confDescription', 'confType', 'confDisplay', 'confRequired', 'confMask', 'confValue'];
-    foreach ($arrays as $key) {
-        $post[$key] = [];
-    }
     foreach ($configs as [$node, $attr]) {
         $target = $attr('Target');
         $default = $attr('Default');
@@ -2128,18 +2114,23 @@ function caInstallPost(SimpleXMLElement $dom, string $url, array $values): array
                 }
             }
         }
-        $post['confName'][] = $attr('Name');
-        $post['confTarget'][] = $target;
-        $post['confDefault'][] = $default;
-        $post['confMode'][] = $attr('Mode');
-        $post['confDescription'][] = $attr('Description');
-        $post['confType'][] = $attr('Type');
-        $post['confDisplay'][] = $attr('Display');
-        $post['confRequired'][] = $attr('Required');
-        $post['confMask'][] = $attr('Mask');
-        $post['confValue'][] = $value;
+        // 直接改写模板节点文本,保留 Name/Target/Mode/Type/Display/Required/Mask 等全部属性,
+        // 使 xmlToCommand 与 WebGUI 读到的结构与官方 CreateDocker.php 产物一致
+        $node[0] = $value;
     }
-    return ['post' => $post, 'secrets' => array_values(array_unique($secrets)), 'name' => $name];
+
+    $dom->Shell = trim((string) $dom->Shell) !== '' ? (string) $dom->Shell : 'sh';
+    $dom->TemplateURL = $url;
+    $dom->DateInstalled = (string) time();
+
+    return [
+        'name' => $name,
+        'repository' => $repository,
+        'templatePath' => TEMPLATE_USER_DIR . '/my-' . $name . '.xml',
+        'templateUrl' => $url,
+        'secrets' => array_values(array_unique($secrets)),
+        'dom' => $dom,
+    ];
 }
 
 function caInstallJobScript(array $job): string
@@ -2150,7 +2141,7 @@ function caInstallJobScript(array $job): string
 declare(strict_types=1);
 
 const CA_JOB_WORK_DIR = __WORK_DIR__;
-const CA_JOB_CREATE_DOCKER = __CREATE_DOCKER__;
+const CA_JOB_UPDATE_CONTAINER = __UPDATE_CONTAINER__;
 const CA_JOB_DOCKER = __DOCKER__;
 const CA_JOB_AUDIT = __AUDIT__;
 $job = __JOB__;
@@ -2300,33 +2291,52 @@ try {
     if (caWorkerContainerExists($job['name'])) {
         throw new RuntimeException('同名 Docker 容器已存在,拒绝覆盖');
     }
-    if (caWorkerTemplateExists($job['name']) && !caWorkerTemplateMatchesUrl($job['name'], $job['post']['contTemplateURL'])) {
+    if (caWorkerTemplateExists($job['name']) && !caWorkerTemplateMatchesUrl($job['name'], $job['templateUrl'])) {
         throw new RuntimeException('同名用户模板来自不同地址,拒绝覆盖');
     }
-    if (!is_file(CA_JOB_CREATE_DOCKER)) {
-        throw new RuntimeException('官方 CreateDocker.php 不存在');
+    if (!is_file(CA_JOB_UPDATE_CONTAINER)) {
+        throw new RuntimeException('官方 update_container 不存在');
     }
-    if (!@chdir('/usr/local/emhttp')) {
-        throw new RuntimeException('无法进入官方 docroot');
+
+    // 1) 先自己 docker pull 拿进度日志:官方 update_container 的 pull 输出走 nchan,App 读不到
+    $repo = $job['repository'];
+    if (!preg_match('/:\S+$/', $repo)) {
+        $repo .= ':latest';
     }
-    $_POST = $job['post'];
-    $_REQUEST = $_POST;
-    $_GET = [];
-    $_FILES = [];
-    $_SERVER['DOCUMENT_ROOT'] = '/usr/local/emhttp';
-    $_SERVER['REQUEST_METHOD'] = 'POST';
-    $_SERVER['REQUEST_URI'] = '/Docker/Add';
-    $docroot = '/usr/local/emhttp';
-    require_once "$docroot/webGui/include/Translations.php";
+    caWorkerLog($logPath, '[unraid-mobile] docker pull ' . $repo . "\n", $job['secrets']);
+    $pull = @popen(CA_JOB_DOCKER . ' pull ' . escapeshellarg($repo) . ' 2>&1', 'r');
+    if ($pull === false) {
+        throw new RuntimeException('无法执行 docker pull');
+    }
+    while (($line = fgets($pull)) !== false) {
+        caWorkerLog($logPath, $line, $job['secrets']);
+    }
+    $pullRc = pclose($pull);
+    if ($pullRc !== 0) {
+        throw new RuntimeException('docker pull 失败(退出码 ' . $pullRc . ')');
+    }
+
+    // 2) 官方 update_container 按用户模板创建并启动(ca_docker_run_override 强制 run -d),
+    //    与容器更新共用同一条官方路径,不再 include CreateDocker.php
+    caWorkerLog($logPath, '[unraid-mobile] update_container ' . $job['name'] . " ca_docker_run_override\n", $job['secrets']);
+    $out = [];
+    $code = 0;
+    exec('/usr/bin/php ' . escapeshellarg(CA_JOB_UPDATE_CONTAINER)
+        . ' ' . escapeshellarg($job['name']) . ' ca_docker_run_override 2>&1', $out, $code);
+    foreach ($out as $line) {
+        caWorkerLog($logPath, $line . "\n", $job['secrets']);
+    }
+    if ($code !== 0) {
+        throw new RuntimeException('update_container 失败(退出码 ' . $code . ')');
+    }
     $started = true;
-    include CA_JOB_CREATE_DOCKER;
 } catch (Throwable $e) {
     $error = $e->getMessage();
 }
 PHP;
     return strtr($template, [
         '__WORK_DIR__' => var_export(PLUGIN_WORK_DIR, true),
-        '__CREATE_DOCKER__' => var_export(CA_CREATE_DOCKER, true),
+        '__UPDATE_CONTAINER__' => var_export(DOCKER_UPDATE_SCRIPT, true),
         '__DOCKER__' => var_export(DOCKER, true),
         '__AUDIT__' => var_export(AUDIT_LOG, true),
         '__JOB__' => var_export($job, true),
@@ -2335,8 +2345,8 @@ PHP;
 
 function startCaInstallJob(array $prepared): string
 {
-    if (!is_file(CA_CREATE_DOCKER)) {
-        fail(503, '官方 CreateDocker.php 不存在');
+    if (!is_file(DOCKER_UPDATE_SCRIPT)) {
+        fail(503, '官方 update_container 不存在');
     }
     if (!is_dir(PLUGIN_WORK_DIR) && !@mkdir(PLUGIN_WORK_DIR, 0700, true) && !is_dir(PLUGIN_WORK_DIR)) {
         fail(500, 'CA 任务目录创建失败');
@@ -2354,10 +2364,20 @@ function startCaInstallJob(array $prepared): string
         fail(500, 'CA 任务锁写入失败');
     }
     fclose($lock);
+    // 容器与模板来源冲突检查已在 startCaInstall 完成,此处才落盘用户模板,
+    // 避免先覆盖他源同名模板再被 findUserTemplate 误判为同源
+    $dom = $prepared['dom'];
+    if (@$dom->asXML($prepared['templatePath']) === false) {
+        @unlink(CA_INSTALL_LOCK);
+        fail(500, '用户模板写入失败: ' . $prepared['templatePath']);
+    }
+    @chmod($prepared['templatePath'], 0644);
     $job = [
         'id' => $id,
         'name' => $prepared['name'],
-        'post' => $prepared['post'],
+        'repository' => $prepared['repository'],
+        'templatePath' => $prepared['templatePath'],
+        'templateUrl' => $prepared['templateUrl'],
         'secrets' => $prepared['secrets'],
         'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
     ];
@@ -2395,7 +2415,7 @@ function startCaInstall(array $body): string
     if (!is_array($values)) {
         fail(400, 'values 必须是 TARGET:value 对象');
     }
-    $prepared = caInstallPost($dom, $url, $values);
+    $prepared = caInstallUserTemplate($dom, $url, $values);
     $name = $prepared['name'];
     if (caDockerContainerExists($name)) {
         audit('cainstall', $name, 'fail');
@@ -3082,7 +3102,7 @@ function readCapabilities(): array
         'bootApiSha256' => $sha($bootDir . '/api.php'),
         'restoreError' => $restoreError,
         'deps' => [
-            'createDocker' => is_file(CA_CREATE_DOCKER),
+            'templateUserDir' => is_dir(TEMPLATE_USER_DIR) && is_writable(TEMPLATE_USER_DIR),
             'updateContainerScript' => is_file(DOCKER_UPDATE_SCRIPT),
             'dockerCli' => is_executable(DOCKER),
             'emcmd' => is_executable(EMCMD),

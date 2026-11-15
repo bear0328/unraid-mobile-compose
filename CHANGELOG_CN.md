@@ -2,6 +2,12 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.3.33] - 2026-11-15
+
+### 变更
+
+- CA 安装不再伪造 `$_POST` 并 include 官方 `CreateDocker.php`：以 CA 模板 XML 直接改写为用户模板 `my-<name>.xml`，先自行 `docker pull` 拿进度，再调官方 `update_container` 创建并启动，与容器更新共用同一条官方路径。安装前提改为用户模板目录可写与 `update_container` 存在，不再需要 `CreateDocker.php`
+
 ## [1.3.32] - 2026-11-15
 
 ### 新增

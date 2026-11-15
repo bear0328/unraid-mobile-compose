@@ -174,9 +174,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 unRAID 宿主上以 root 执行
 mkdir -p /tmp/um-install && cd /tmp/um-install
 curl -fsSL -o install-compose-api.sh \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/install-compose-api.sh
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/install-compose-api.sh
 curl -fsSL -o api.php \
-  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.32/compose-api/api.php
+  https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.3.33/compose-api/api.php
 bash install-compose-api.sh
 ```
 
@@ -208,6 +208,10 @@ bash install-compose-api.sh
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.3.33(2026-11-15)
+
+- CA 安装去掉 `$_POST`/`CreateDocker.php` 耦合：CA 模板 XML 直接写为用户模板 `my-<name>.xml`，先 `docker pull` 拿进度再调官方 `update_container` 创建（与容器更新同一路径）。compose-api 已更新，**升级后需重跑安装脚本**
 
 ### v1.3.32(2026-11-15)
 
