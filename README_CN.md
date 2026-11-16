@@ -181,7 +181,7 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 Unraid 机器的 SSH/终端中以 root 执行
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.3/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.4/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/install-compose-api.sh"
 ```
 
@@ -215,6 +215,10 @@ um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.4.4(2026-11-16)
+
+- 修复 Web 告警弹层标题在已读后仍显示通知总数；标题未读数现在与铃铛角标同步减少
 
 ### v1.4.3(2026-11-16)
 

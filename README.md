@@ -203,7 +203,7 @@ downloads the remaining agent files, verifying `api.php` and `plugin-worker.php`
 # Run as root in an SSH session or terminal on the Unraid machine
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.3/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.4/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/install-compose-api.sh"
 ```
 
@@ -241,6 +241,10 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.4.4 (2026-11-16)
+
+- Fixed the Web alert popover heading continuing to show the total alert count after items were read; its unread count now decreases together with the bell badge
 
 ### v1.4.3 (2026-11-16)
 

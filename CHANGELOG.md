@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.4] - 2026-11-16
+
+### Fixed
+
+- The Web alert popover heading now shows the unread count instead of the total alert count, so its number decreases together with the bell badge when alerts are marked read
+
 ## [1.4.3] - 2026-11-16
 
 ### Changed
