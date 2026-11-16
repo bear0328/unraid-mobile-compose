@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.3] - 2026-11-16
+
+### Changed
+
+- The Web alert badge now counts unread items: opening an alert marks it read and decrements the badge, while "Mark all read" clears the count without removing the alert history. Read state persists locally per server
+
+## [1.4.2] - 2026-11-16
+
+### Added
+
+- Notification details now include a "Related logs" section: summary notifications such as Fix Common Problems, whose body only says where to look, inline the actual error lines from syslog (keywords derived per notification, OR-matched, newest first, fetched independently of the log page's maxLines cap), with one tap into the log page pre-filtered. Web alert popover offers the same entry via `/logs?filter=...`
+- Notifications can be copied in full (title/subject/body/level/timestamp/link) for pasting into forum posts
+
+### Fixed
+
+- Notifications no longer push users out to a browser: native detail view and Web alert popover show the full body in place (no truncation, HTML tags stripped, line breaks preserved), and cards no longer deep-link wholesale into the WebGUI. "Open in WebUI" is now a secondary entry labeled as requiring login
+- Native notification links now resolve relative/absolute URLs against the server address, fixing double slashes and malformed URLs from `base + link` concatenation
+- Web `SERVER_META_QUERY` now fetches `description` so the top-bar alert popover can show the body at all; native alert/warning rows expand their body by default and the row icon now signals details
+
 ## [1.4.1] - 2026-11-15
 
 ### Changed

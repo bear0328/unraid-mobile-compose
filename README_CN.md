@@ -181,7 +181,7 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 # 在 Unraid 机器的 SSH/终端中以 root 执行
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.1/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.3/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/install-compose-api.sh"
 ```
 
@@ -215,6 +215,10 @@ um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.4.3(2026-11-16)
+
+- Web 告警支持单条及全部已读，角标只统计未读；已读状态按服务器本地保存，数量清零后仍可回看历史告警
 
 ### v1.4.1(2026-11-15)
 
