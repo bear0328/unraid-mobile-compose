@@ -3,6 +3,7 @@
 **[English](README.md)** | 简体中文
 
 [![Telegram 交流群](https://img.shields.io/badge/Telegram-交流群-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+l1iA02ZkOK1lNmEx)
+[![TestFlight 公开测试](https://img.shields.io/badge/TestFlight-公开测试-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/c9apZvbG)
 [![Docker 镜像版本](https://img.shields.io/docker/v/bear0328/unraid-mobile?sort=semver&label=docker)](https://hub.docker.com/r/bear0328/unraid-mobile)
 [![Docker Pulls](https://img.shields.io/docker/pulls/bear0328/unraid-mobile)](https://hub.docker.com/r/bear0328/unraid-mobile)
 
