@@ -32,7 +32,7 @@ unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正�
 | 仪表盘全部监控:CPU / 内存 / 网络 / 磁盘 / 阵列 / parity 校验进度 / 历史曲线 / 收藏、unRAID 告警徽章 | 容器 / VM 启停 / 重启 / 暂停 / 恢复操作、**VM 增强详情**¹(CPU/内存/磁盘/网络/直通/快照,读 libvirt XML) |
 | 容器 / VM 列表、容器详情(端口/挂载/网络/磁盘占用)、容器日志、VM 基础详情 | **Compose 栈管理**(列表/日志/up/down/pull/rebuild/yaml 编辑)¹、**插件管理**(检查/安装/更新/卸载,原生端)¹ |
 | Shares 文件浏览 / 下载 / 图片预览、磁盘/缓存池只读浏览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
-| 全局搜索、命令面板、配置备份/导入、单服务器、深色主题、PWA | **容器一键更新**(单个/批量,webGui 同款)、**UPS 监控**(电量/续航/负载)、容器批量操作、**多服务器**、告警通知(Webhook)、磁盘清理 |
+| 全局搜索、命令面板、配置备份/导入、单服务器、深色主题、PWA | **容器一键更新**(单个/批量,webGui 同款)、**UPS 监控**(电量/续航/负载)、容器批量操作、告警通知(Webhook)、磁盘清理 |
 
 ¹ 依赖宿主后端(compose-api)——需按下方「Pro 宿主后端」一节在 unRAID 宿主安装小组件,
 **安装会修改开机脚本 `/boot/config/go`,请先知悉其中的风险说明**。免费版无需安装任何东西。
@@ -40,8 +40,9 @@ unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正�
 **宿主后端依赖原则**:Compose 管理 / CPU 温度均依赖宿主 `api.php`
 (安装到 `/boot/config/plugins/unraid-mobile/`),此类功能均为 Pro。
 
-Pro 为**买断制**:一次付费永久使用(含 1 年更新)。在「设置 → License」输入 key 即解锁,
-全程离线验证,不联网、不上传任何数据。购买渠道见 GitHub Releases / 后续公告。
+Pro 为**买断制**:一次付费永久使用(含 1 年更新)。在「设置 → License」输入 key 即解锁。
+2026-11-18 起旧格式 key 全部停用，需重新签发。新 key 在首次激活时需联网自动绑机，仅上传 key 与
+flashGuid 的 SHA-256 哈希，不上传完整 key、原始 GUID 或邮箱。购买渠道见 GitHub Releases / 后续公告。
 
 ## 告警通知(Webhook)
 
@@ -56,35 +57,34 @@ Pro 为**买断制**:一次付费永久使用(含 1 年更新)。在「设置 �
 磁盘类事件沿用 30 分钟磁盘缓存节拍,不会因监控额外唤醒休眠盘。消息模板变量:
 `{{container}} {{state}} {{server}} {{time}} {{category}}`。
 
-## 快速开始（全功能 Compose）
+## 快速开始（Compose）
 
-> setup 只运行一次并退出，Web 容器不持有宿主特权。安装会修改 `/boot/config/go`，并可能在
-> 宿主安装 Compose Manager Plus；继续前请阅读下方「Pro 宿主后端」风险说明。
+> 只使用一份 Compose、一个应用镜像和一个常驻容器。容器不持有宿主特权，也不会自动安装
+> Unraid 插件或修改宿主文件；Pro 宿主后端需按下文单独引导。
 
 ```bash
 mkdir -p /mnt/user/appdata/unraid-mobile/compose/secrets
 cd /mnt/user/appdata/unraid-mobile/compose
 curl -fsSL -O https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/docker-compose.yml
 curl -fsSL -o .env https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/.env.example
-# 编辑 .env:填写 UNRAID_UPSTREAM / UNRAID_SERVER_URL,确认 ALLOW_HOST_INSTALL=YES
+# 编辑 .env:填写 UNRAID_UPSTREAM / UNRAID_SERVER_URL
 ```
 
-用不回显、不写 shell history 的方式创建三个 secret 文件：
+用不回显、不写 shell history 的方式创建两个 secret 文件：
 
 ```bash
-read -r -s -p 'unRAID API key: ' SECRET; echo; printf '%s' "$SECRET" > secrets/unraid_api_key
 read -r -s -p 'WebDAV password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/dav_password
 read -r -s -p 'Syslog password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/log_password
 unset SECRET
 chmod 600 .env secrets/*
 docker compose up -d
-# setup 失败时 Web 不会启动;先看具体错误:
-docker compose logs setup
+docker compose logs unraid-mobile
 ```
 
-打开 `http://<unraid-IP>:3999`，在设置页填写同一 API key、WebDAV/日志密码，再输入 Pro License key。
-secret 文件由用户持有且权限为 600；宿主 `apikey` 只保存 SHA-256 哈希，安装报告不记录明文秘密。
-重复执行 `docker compose up -d` 会幂等检查，不重复安装插件，也不覆盖 UI 已保存的 `serverUrl`。
+打开 `http://<unraid-IP>:3999`，在设置页填写 unRAID API key 和相同的 WebDAV/日志密码。
+API key 只保存在当前浏览器或原生设备中，不作为 Compose secret 下发；secret 文件由用户持有且权限为 600。
+主容器仅在启动时生成或校验 bcrypt 认证文件，已有 `settings.json` 不会被覆盖。免费版到此即可使用；
+需要 Compose 管理等 Pro 宿主功能时，再执行下方 `bootstrap-host.sh`。
 
 ## 仅基础功能：docker run
 
@@ -137,12 +137,12 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-unraid-mobile.xml
 | Compose 栈管理 / CPU 温度(Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + 宿主后端 | 见下节 |
 
 完整 Compose 以 [`docker-compose.yml`](docker-compose.yml) 为唯一来源，默认启用上述挂载；不再在文档复制第二份示例。
-单服务器默认只运行一次性 setup 和 Web，不启动 router。只有需要 Web 多服务器时才执行
-`docker compose --profile multi-server up -d` 启用受控 router。
+当前版本只支持单服务器，始终只运行 `unraid-mobile` 一个常驻应用容器；License 服务是独立项目，不在此 Compose 内。
 
 ## Pro 宿主后端(compose-api):Compose / 插件管理 / CPU 温度
 
-使用上面的全功能 Compose 时，setup 会自动完成本节安装与校验；以下手工命令仅供「仅基础功能 docker run」用户或排障使用。
+Compose、`docker run` 和 Docker UI 模板都只负责应用容器，不会自动安装本节后端。需要这些 Pro 功能时，
+在 Unraid 宿主上显式执行下面的 `bootstrap-host.sh`；它会先校验 GraphQL 与 API key，再调用既有幂等安装器。
 
 Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api.php`,经宿主 php-fpm
 以 root 执行 `docker compose` / 官方 `plugin` CLI / 直读 `/sys/class/hwmon`)。
@@ -175,24 +175,29 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 
 免费版无需任何第三方 Unraid 插件。Pro 宿主后端只额外依赖 **Compose Manager Plus**
 (内部插件 ID 仍为 `compose.manager`,与旧版共用目录);
-**不需要先安装 Community Applications**。下面的一条命令会在 Unraid 上创建私有临时目录并下载安装器,
-其余后端文件由安装器自动下载,其中 `api.php` 和 `plugin-worker.php` 会做 SHA-256 校验:
+**不需要先安装 Community Applications 或 User Scripts**。下面的命令会在 Unraid 上创建私有临时目录，
+下载宿主 bootstrap 和既有安装器；其余后端文件由安装器自动下载，其中 `api.php` 和 `plugin-worker.php` 会做 SHA-256 校验：
 
 ```bash
 # 在 Unraid 机器的 SSH/终端中以 root 执行
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
-  && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.4/compose-api/install-compose-api.sh \
-  && bash "$um_install_dir/install-compose-api.sh"
+  && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
+  && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.7/scripts/bootstrap-host.sh \
+  && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.7/compose-api/install-compose-api.sh \
+  && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
-脚本会:风险确认(输 YES)→ 检测 compose.manager(**Plus 或兼容旧版已安装均跳过**;
-缺失时通过 Unraid 官方 `plugin` 命令从作者仓库安装 Compose Manager Plus)→ 交互式收 apiKey 写入
-`/boot/config/plugins/unraid-mobile/apikey`(存 `sha256:` 哈希,明文不落 flash 盘;FAT 权限由挂载选项控制)
-→ 装 api.php 到 Compose Manager Plus 插件目录 → 备份并加 `/boot/config/go` 恢复钩子。可重复执行,
-不会重复安装已有插件。`--local-only` 用于离线恢复,此时缺少 Compose Manager Plus 会中止并提示手动安装。
+bootstrap 默认通过 `http://127.0.0.1/graphql` 校验 API key；如本机 GraphQL 使用其他地址，追加
+`--upstream http://127.0.0.1:8001`。校验通过后才会进入安装器：风险确认(输 YES)→ 检测 compose.manager
+(**Plus 或兼容旧版已安装均跳过**；缺失时通过 Unraid 官方 `plugin` 命令从作者仓库安装 Compose Manager Plus)
+→ 将 apiKey 以 `sha256:` 哈希写入 `/boot/config/plugins/unraid-mobile/apikey`(明文不落 flash 盘)
+→ 装 api.php 到 Compose Manager Plus 插件目录 → 备份并加 `/boot/config/go` 恢复钩子。
+可重复执行，不会重复安装已有插件。`--local-only` 用于离线恢复，此时缺少 Compose Manager Plus 会中止并提示手动安装。
 
-装完给容器加上 php-fpm.sock 挂载并重建,Compose tab 与 CPU 温度(Pro 激活后)即可用。
+Compose 已默认挂载 php-fpm.sock；使用 `docker run` 或自定义模板时需自行添加该挂载并重建容器，
+Compose tab 与 CPU 温度(Pro 激活后)即可用。
 
 ## unRAID GraphQL API 限制说明
 
@@ -216,6 +221,15 @@ um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.4.7(2026-11-19)
+
+- 单容器升级遇到空占位 secret 时保留已有 DAV/日志 bcrypt 凭据；全新安装仍拒绝空 secret
+
+### v1.4.6(2026-11-19)
+
+- 部署收敛为一份 Compose、一个应用镜像和一个非特权常驻容器；Web 与原生端退役 setup/router 及多服务器功能，备份迁移仅保留 active 配置
+- 新增独立幂等 Pro 宿主 bootstrap，并完善媒体预览、中文字幕与文件类型图标
 
 ### v1.4.4(2026-11-16)
 
@@ -431,11 +445,11 @@ um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
 
 ## 常见问题
 
-**Q: 多服务器如何配置?**
-每台目标 unRAID 都用上面的全功能 Compose 部署。在「设置 → 服务器列表」填写 GraphQL 的
-`serverUrl` 和目标容器的 `appUrl`（如 `http://192.168.1.100:3999`），保存时会通过本机 DAV
-管理员密码同步受信路由表。GraphQL、WebSocket、Compose、文件和日志按 routeId 转发；
-全量配置备份始终只写入口机。旧版多服务器配置缺少 `appUrl` 时需逐台编辑补齐，不会回退到本机。
+**Q: 如何配置服务器？**
+当前版本只管理一台 unRAID。Web 版请求始终由当前容器的 `UNRAID_UPSTREAM` 代理，
+设置页中的服务器地址用于标识连接和生成宿主编排链接；原生端则直连设置页中的地址。
+升级旧多服务器配置时，原生端保留原 active 服务器；Web 端只自动迁移能确认属于当前入口的配置，
+无法确认时会要求在设置页重新填写，避免把旧服务器密钥发给当前上游。
 
 **Q: 有问题去哪讨论 / 反馈?**
 加 Telegram 交流群:<https://t.me/+l1iA02ZkOK1lNmEx>,或在 GitHub 提 issue。
@@ -462,7 +476,8 @@ compose 文件、Docker UI 模板,以及宿主后端的完整源码——唯一�
   **Business Source License 1.1(BSL)** 授权(见 [LICENSE](LICENSE)):
   个人使用与修改自由;**禁止转售、禁止做成收费/托管服务提供给第三方**。
 
-商业化形式:**Pro 功能通过离线 license key 解锁**(设置页输入即可,买断制,不联网验证)。
-**1 枚 key 绑定 1 台 unRAID 服务器**(按 U 盘 flashGuid 校验,重装系统不影响;更换 U 盘后
-联系重签),**最多可在 3 台设备**(手机/浏览器)上激活,旧设备「解除绑定」即释放名额。
+商业化形式:**Pro 功能通过 license key 解锁**(设置页输入即可,买断制)。
+**1 枚 key 绑定 1 台 unRAID 服务器**(按 U 盘 flashGuid 校验;客户 key 首次激活时自动绑定,
+重装系统不影响;更换 U 盘后联系重签),**最多可在 3 台设备**(手机/浏览器)上激活,
+旧设备「解除绑定」即释放名额。旧格式 key 已停用;新 autoBind key 仅首次绑定需联网并上传哈希。
 如果你喜欢这个项目,购买 Pro 是对开发最直接的支持。

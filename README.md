@@ -33,7 +33,7 @@ GraphQL API (7.2+; disk sleep badges and network rate stats require unRAID 7.3+ 
 | Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (CPU/memory/disks/network/passthrough/snapshots, read from libvirt XML) |
 | Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹, **plugin management** (check/install/update/remove, native app)¹ |
 | Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
-| Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, **multi-server**, alert notifications (Webhook), disk cleanup |
+| Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, alert notifications (Webhook), disk cleanup |
 
 ¹ Requires the host agent (compose-api) — a small component installed on the unRAID host as described
 in "Pro host agent" below. **Installation modifies the boot script `/boot/config/go`; read the risk
@@ -43,8 +43,10 @@ notice there first.** The free version requires no host installation at all.
 (installed under `/boot/config/plugins/unraid-mobile/`); these features are Pro.
 
 Pro is a **one-time purchase**: pay once, use forever (includes 1 year of updates). Enter the key in
-"Settings → License" to unlock — verification is fully offline, no network calls, no data uploaded.
-See GitHub Releases / future announcements for purchase channels.
+"Settings → License" to unlock. Legacy keys were retired on 2026-11-18 and must be reissued. New
+customer keys bind automatically on first activation, which requires network access and uploads only
+SHA-256 hashes of the key and flash GUID — never the full key, raw GUID, or email address. See GitHub
+Releases / future announcements for purchase channels.
 
 ## Alert notifications (Webhook)
 
@@ -62,36 +64,36 @@ opt-in (only container-stop is on by default):
 Disk events follow the existing 30-minute disk-cache cadence — monitoring never spins up
 sleeping disks. Template variables: `{{container}} {{state}} {{server}} {{time}} {{category}}`.
 
-## Quick start (full-featured Compose)
+## Quick start (Compose)
 
-> The setup container runs once and exits; the Web container has no host privileges. Setup modifies
-> `/boot/config/go` and may install Compose Manager Plus. Read the Pro host-agent risk notice first.
+> There is one Compose file, one application image, and one long-running container. The container has
+> no host privileges and never installs Unraid plugins or modifies host files automatically. Bootstrap
+> the Pro host agent separately as described below.
 
 ```bash
 mkdir -p /mnt/user/appdata/unraid-mobile/compose/secrets
 cd /mnt/user/appdata/unraid-mobile/compose
 curl -fsSL -O https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/docker-compose.yml
 curl -fsSL -o .env https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/master/.env.example
-# Edit .env: set UNRAID_UPSTREAM / UNRAID_SERVER_URL and confirm ALLOW_HOST_INSTALL=YES
+# Edit .env: set UNRAID_UPSTREAM / UNRAID_SERVER_URL
 ```
 
-Create the three secret files without echoing values or writing them to shell history:
+Create the two secret files without echoing values or writing them to shell history:
 
 ```bash
-read -r -s -p 'unRAID API key: ' SECRET; echo; printf '%s' "$SECRET" > secrets/unraid_api_key
 read -r -s -p 'WebDAV password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/dav_password
 read -r -s -p 'Syslog password: ' SECRET; echo; printf '%s' "$SECRET" > secrets/log_password
 unset SECRET
 chmod 600 .env secrets/*
 docker compose up -d
-# If setup fails, the Web container stays stopped; inspect the concrete error:
-docker compose logs setup
+docker compose logs unraid-mobile
 ```
 
-Open `http://<unraid-IP>:3999`, enter the same API key and WebDAV/syslog passwords in Settings, then
-activate your Pro License key. Secret files remain user-owned with mode 600; the host `apikey` stores
-only a SHA-256 hash and setup reports contain no plaintext secrets. Re-running `docker compose up -d`
-is idempotent and does not overwrite the `serverUrl` later saved by the UI.
+Open `http://<unraid-IP>:3999`, enter your unRAID API key and the same WebDAV/syslog passwords in
+Settings. The API key stays in the current browser or native device and is not distributed as a Compose
+secret. Secret files remain user-owned with mode 600. At startup, the main container creates or verifies
+bcrypt credential files without overwriting an existing `settings.json`. The free version is ready at
+this point; run `bootstrap-host.sh` below only if you need Pro host features such as Compose management.
 
 ## Basic features only: docker run
 
@@ -146,13 +148,14 @@ enabled per mount:
 | Compose stacks / CPU temperature (Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + host agent | See next section |
 
 The single source of truth is [`docker-compose.yml`](docker-compose.yml), which enables the full mount set by default.
-Single-server deployments run only the one-shot setup and Web services; the router stays off. Enable it
-only for Web multi-server access with `docker compose --profile multi-server up -d`.
+The app now supports one server and always runs only the `unraid-mobile` application container. The
+License service is an independent project and is not part of this Compose file.
 
 ## Pro host agent (compose-api): Compose / plugins / CPU temperature
 
-Full-featured Compose performs this installation and verification automatically. The manual commands
-below are only for the basic `docker run` path or troubleshooting.
+Compose, `docker run`, and the Docker UI template only manage the application container; none installs
+this host agent automatically. To use these Pro features, explicitly run `bootstrap-host.sh` on the
+Unraid host. It validates GraphQL and the API key before invoking the existing idempotent installer.
 
 Compose, plugin management, and CPU temperature (all Pro features) rely on a small host-side component
 (`api.php`, executed as root via the host's php-fpm to run `docker compose`, the official `plugin` CLI,
@@ -196,29 +199,34 @@ cleanup are defined by each plugin. Unraid OS updates remain out of scope.
 
 The free version needs no third-party Unraid plugins. The Pro host agent's only additional plugin
 dependency is **Compose Manager Plus** (its internal plugin ID remains `compose.manager`, sharing the
-same directories as the legacy plugin); **Community Applications itself is not required**. This single
-command creates a private temporary directory on Unraid and downloads the installer. The installer
-downloads the remaining agent files, verifying `api.php` and `plugin-worker.php` with SHA-256:
+same directories as the legacy plugin); **neither Community Applications nor User Scripts is required**.
+These commands create a private temporary directory on Unraid and download the host bootstrap plus the
+existing installer. The installer downloads the remaining agent files, verifying `api.php` and
+`plugin-worker.php` with SHA-256:
 
 ```bash
 # Run as root in an SSH session or terminal on the Unraid machine
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
-  && curl -fsSL -o "$um_install_dir/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.4/compose-api/install-compose-api.sh \
-  && bash "$um_install_dir/install-compose-api.sh"
+  && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
+  && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.7/scripts/bootstrap-host.sh \
+  && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.7/compose-api/install-compose-api.sh \
+  && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
-The script: risk confirmation (type YES) → detects compose.manager (**skips when Plus or a
-compatible legacy version is already installed**; otherwise installs Compose Manager Plus from the
-author's repository through Unraid's official `plugin` command) → interactively asks for the API key and writes it to
-`/boot/config/plugins/unraid-mobile/apikey` (stored as a `sha256:` hash; FAT permissions are mount-controlled — the plaintext
-key never touches the flash drive) → installs api.php into the Compose Manager Plus plugin directory →
-backs up and appends the `/boot/config/go` restore hook. It is safe to re-run and never reinstalls
-an existing plugin. `--local-only` is for offline recovery; in that mode a missing Compose Manager Plus
-causes a clear error instead of a network install.
+The bootstrap validates the API key against `http://127.0.0.1/graphql` by default; append
+`--upstream http://127.0.0.1:8001` if GraphQL listens at a different local address. Only after validation
+does the installer run: risk confirmation (type YES) → detect compose.manager (**skip when Plus or a
+compatible legacy version is already installed**; otherwise install Compose Manager Plus through Unraid's
+official `plugin` command) → store the API key as a `sha256:` hash in
+`/boot/config/plugins/unraid-mobile/apikey` (plaintext never touches the flash drive) → install api.php
+into the Compose Manager Plus plugin directory → back up and append the `/boot/config/go` restore hook.
+It is safe to re-run and never reinstalls an existing plugin. `--local-only` is for offline recovery; in
+that mode a missing Compose Manager Plus causes a clear error instead of a network install.
 
-Afterwards add the php-fpm.sock mount to the container and recreate it; the Compose tab and CPU
-temperature (once Pro is activated) are ready.
+Compose already mounts php-fpm.sock. With `docker run` or a custom template, add that mount and recreate
+the container; the Compose tab and CPU temperature (once Pro is activated) are then ready.
 
 ## unRAID GraphQL API limitations
 
@@ -242,6 +250,15 @@ temperature (once Pro is activated) are ready.
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.4.7 (2026-11-19)
+
+- Preserved existing DAV/syslog bcrypt credentials during single-container upgrades when only empty placeholder secrets are available; fresh installs still reject empty secrets
+
+### v1.4.6 (2026-11-19)
+
+- Consolidated deployment into one Compose file, one application image, and one unprivileged container; retired setup/router and multi-server mode across Web and native apps, with active-only backup and migration
+- Added separate idempotent Pro host bootstrap and improved media previews, Chinese subtitles, and file-type icons
 
 ### v1.4.4 (2026-11-16)
 
@@ -457,12 +474,13 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## FAQ
 
-**Q: How do I configure multiple servers?**
-Deploy the full Compose stack on every target unRAID. Under Settings → Server list, enter both the
-GraphQL `serverUrl` and the target container's `appUrl` (for example `http://192.168.1.100:3999`).
-Saving synchronizes a trusted route registry using the local DAV admin password. GraphQL, WebSocket,
-Compose, files and logs are routed by routeId; full configuration backups always stay on the entry
-host. Legacy entries without `appUrl` must be edited explicitly and never fall back to the local host.
+**Q: How do I configure the server?**
+The current version manages one unRAID server. Web requests always go through the current container's
+`UNRAID_UPSTREAM`; the server URL in Settings identifies the connection and builds host orchestration
+links. Native clients connect directly to the configured URL. During upgrades, native clients retain the
+formerly active server. Web only migrates a legacy entry automatically when it can be confirmed to belong
+to the current entry point; otherwise Settings asks for the connection again rather than sending an old
+server's API key to the current upstream.
 
 **Q: Where can I ask questions or give feedback?**
 Join the Telegram group: <https://t.me/+l1iA02ZkOK1lNmEx>, or open a GitHub issue.
@@ -493,9 +511,10 @@ container.
   the **Business Source License 1.1** (see [LICENSE](LICENSE)): personal use and modification are
   free; **no resale, no offering it as a paid/hosted service to third parties**.
 
-Commercial model: **Pro features are unlocked with an offline license key** (enter it in Settings;
-one-time purchase, no online verification). **One key is bound to one unRAID server** (verified
-against the USB flash GUID — OS reinstalls don't affect it; if you replace the USB drive, contact
-us for a reissue) **and can be activated on up to 3 devices** (phones/browsers); "Unbind" on an old
-device releases its slot. If you like this project, buying Pro is the most direct way to support
-its development.
+Commercial model: **Pro features are unlocked with a license key** (enter it in Settings; one-time
+purchase). **One key is bound to one unRAID server** (verified against the USB flash GUID; new customer
+keys bind automatically on first activation — OS reinstalls don't affect it; if you replace the USB drive,
+contact us for a reissue) **and can be activated on up to 3 devices** (phones/browsers); "Unbind" on an
+old device releases its slot. Legacy keys were retired on 2026-11-18 and must be reissued; autoBind keys
+require network access for binding and send hashes, not raw values. If you like this project, buying Pro
+is the most direct way to support its development.

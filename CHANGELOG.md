@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.7] - 2026-11-19
+
+### Fixed
+
+- Upgrades from deployments that only have bcrypt hashes can now use empty placeholder secret files without resetting existing DAV/syslog passwords. Fresh installations with empty secrets and no existing credentials still fail closed
+- The release test derives the expected bootstrap version from package.json, and re-running a release with an unchanged package version is now idempotent
+
+## [1.4.6] - 2026-11-19
+
+### Added
+
+- Improved media previews, added Chinese subtitle rendering, and expanded file-type icons across Web and native iOS
+- Added a separate host bootstrap that validates GraphQL and the API key before invoking the existing idempotent Pro agent installer
+
+### Changed
+
+- Consolidated deployment into one Compose file, one application image, and one long-running unprivileged container; removed the setup/router images, services, and release paths
+- Retired multi-server mode across Web, Capacitor, and SwiftUI. Configuration backup and restore now retain only the active server while remaining compatible with legacy backup fields
+- The main container now initializes bcrypt credentials and preserves existing settings without host privileges. The free version needs no third-party plugins; the Pro host agent requires only Compose Manager Plus and skips it when already installed
+
+### Security
+
+- Legacy Web multi-server migration now selects only an entry matching the current origin. Ambiguous credentials and sensitive backup uploads fail closed until the user explicitly confirms the connection
+
+## [1.4.5] - 2026-11-18
+
+### Added
+
+- Add a persistent license activation service for first-activation server binding. New auto-bind Pro keys bind atomically to the current server's hashed Unraid flash GUID, accept repeated activation on the same server, and reject activation on other servers
+- Web and native iOS now confirm the central binding before enabling Pro and retain only hashed binding data for matched-server offline recovery
+
+### Changed
+
+- The license issuer now generates only auto-bind keys, supports anonymous customer identifiers and per-key device limits, and appends complete keys to a local Git-ignored registry
+- New Web and native iOS clients reject legacy pre-bound and unbound license payloads even when their signatures are valid; previously installed app versions must be upgraded to enforce this policy
+
+### Security
+
+- The activation service receives and stores only SHA-256 key and flash-GUID hashes. The signing private key, complete issued keys, raw GUIDs, and customer email addresses are not deployed to it
+
 ## [1.4.4] - 2026-11-16
 
 ### Fixed
