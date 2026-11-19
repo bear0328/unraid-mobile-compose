@@ -2,6 +2,17 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.4.8] - 2026-11-19
+
+### 新增
+
+- Web 新增免费只读文本预览，采用安全纯文本渲染、1 MB 上限和 UTF-8/UTF-16/GB18030 解码；新增 NFO、常见字幕、歌词、播放列表、Dockerfile 与 Makefile 支持
+- 原生新增更多图片、音频和 VLC 视频格式预览，并通过 QuickLook 支持 RTF 与 Office 文档；Web 与原生均新增 JFIF 图片和 M4B 音频识别
+
+### 修复
+
+- Web 视频解码失败时显示明确提示并提供下载回退；原生 QuickLook 对不支持的文档显示错误，不再留下空白预览
+
 ## [1.4.7] - 2026-11-19
 
 ### 修复

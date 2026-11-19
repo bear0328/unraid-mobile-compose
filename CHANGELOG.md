@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.8] - 2026-11-19
+
+### Added
+
+- Added free read-only Web text preview with safe plain-text rendering, a 1 MB limit, and UTF-8/UTF-16/GB18030 decoding. Expanded text support to NFO, common subtitles, lyrics, playlists, Dockerfile, and Makefile
+- Expanded native previews with additional image, audio, and VLC video formats, plus RTF and Office documents through QuickLook; Web and native now recognize JFIF images and M4B audio
+
+### Fixed
+
+- Web video decode failures now show a clear message with a download fallback, and native QuickLook reports unsupported documents instead of leaving a blank preview
+
 ## [1.4.7] - 2026-11-19
 
 ### Fixed
