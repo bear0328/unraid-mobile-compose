@@ -43,6 +43,10 @@ declare(strict_types=1);
  *   GET  ?action=caapps&refresh=0|1         CA 应用商店目录(只读):官方 feed 白名单字段 + /tmp 短缓存
  *   GET  ?action=catemplate&url=X           feed 白名单内 Docker 模板;mask 配置不回传默认值
  *   GET  ?action=cajob&id=X                 CA 安装任务 running/log/result(严格任务 ID)
+ *   GET  ?action=dockertemplate&name=X       普通容器 v2 用户模板(掩码值不回传,带 revision)
+ *   PUT  {action:dockeredit,name,revision,...配置}
+ *                                         原子更新模板并异步重建;缺镜像才拉取,保持原运行状态
+ *   GET  ?action=dockereditjob&id=X          参数编辑任务 running/log/result(严格任务 ID)
  *   PUT  {action:cainstall,templateUrl,values}
  *                                          重新校验 feed 与模板,仅新容器;以 CA 模板直写用户模板
  *                                          my-<name>.xml(不再伪造 $_POST/include CreateDocker.php),
@@ -131,6 +135,9 @@ const CA_APPS_CONNECT_TIMEOUT_SEC = 10;
 const CA_APPS_TOTAL_TIMEOUT_SEC = 60;
 const CA_TEMPLATE_MAX_BYTES = 2097152;
 const CA_INSTALL_LOCK = PLUGIN_WORK_DIR . '/cainstall.lock';
+// 普通容器参数编辑:独立任务与容器级锁;原模板/日志只在 tmpfs,重启自清。
+const DOCKER_EDIT_DIR = '/tmp/unraid-mobile-dockeredit';
+const DOCKER_EDIT_HELPER = '/usr/local/emhttp/plugins/dynamix.docker.manager/include/Helpers.php';
 // 描述纯文本长度上限
 const CA_APPS_DESC_MAX = 1200;
 // 响应字段白名单:只有这些键能出现在 apps[] 里
@@ -1125,9 +1132,51 @@ function userTemplateMatchesUrl(?string $path, string $url): bool
  *  5) result.json(与 compose last_result.json 同构)→ 成功调 update-status.php --image
  *     回写更新缓存 → 审计 → 放锁
  */
-function dockerUpdateJobScript(string $name, string $tmpl, string $dir, string $ip): string
+function dockerContainerLockPath(string $name): string
+{
+    return DOCKER_EDIT_DIR . '/' . $name . '.lock';
+}
+
+function ensureDockerEditDir(): void
+{
+    if (!is_dir(DOCKER_EDIT_DIR) && !@mkdir(DOCKER_EDIT_DIR, 0700, true) && !is_dir(DOCKER_EDIT_DIR)) {
+        fail(500, '容器任务目录创建失败');
+    }
+    @chmod(DOCKER_EDIT_DIR, 0700);
+}
+
+/** 参数编辑与镜像更新共用一把原子锁，消除双向 check-then-act 竞态。 */
+function acquireDockerContainerLock(string $name, string $owner): string
+{
+    ensureDockerEditDir();
+    $path = dockerContainerLockPath($name);
+    $lock = @fopen($path, 'x');
+    if ($lock === false) {
+        fail(409, '该容器有参数编辑或镜像更新正在进行中,请等待完成');
+    }
+    if (@fwrite($lock, $owner) === false) {
+        @fclose($lock);
+        @unlink($path);
+        fail(500, '容器任务锁写入失败');
+    }
+    fclose($lock);
+    return $path;
+}
+
+function releaseDockerContainerLock(string $path, string $owner): void
+{
+    if (trim((string) @file_get_contents($path)) === $owner) @unlink($path);
+}
+
+function dockerUpdateJobScript(string $name, string $tmpl, string $dir, string $ip,
+    string $containerLock, string $lockOwner): string
 {
     return '#!/bin/bash' . "\n"
+        . 'opLock=' . escapeshellarg($dir . '/op-lock') . "\n"
+        . 'containerLock=' . escapeshellarg($containerLock) . "\n"
+        . 'lockOwner=' . escapeshellarg($lockOwner) . "\n"
+        . 'cleanup() { rm -f "$opLock"; if [ -f "$containerLock" ] && [ "$(<"$containerLock")" = "$lockOwner" ]; then rm -f "$containerLock"; fi; }' . "\n"
+        . 'trap cleanup EXIT' . "\n"
         . 'cd ' . escapeshellarg($dir) . ' || exit 1' . "\n"
         . 'exec > update.log 2>&1' . "\n"
         . 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' . "\n"
@@ -1161,33 +1210,858 @@ function dockerUpdateJobScript(string $name, string $tmpl, string $dir, string $
         . '"$([ "$ec" -eq 0 ] && echo success || echo error)" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > result.json' . "\n"
         . 'printf \'[%s] action=dockerupdate stack=%s result=%s ip=%s\n\' "$(date -Iseconds)" "$name" '
         . '"$([ "$ec" -eq 0 ] && echo ok || echo fail)" ' . escapeshellarg($ip) . ' >> ' . escapeshellarg(AUDIT_LOG) . "\n"
-        . 'rm -f op-lock' . "\n";
+        . 'exit "$ec"' . "\n";
 }
 
-/** 【续 147】op-lock(fopen x 原子,撞锁 409;tmpfs 重启自清,无 compose 的 flash 残留锁问题)+ 落 job.sh + nohup */
+/** 【续 147】op-lock + 与参数编辑共用的容器级原子锁;后台 EXIT trap 双向放锁。 */
 function runDockerUpdateAsync(string $name, string $tmpl): void
 {
     $dir = DOCKER_UPDATE_DIR . '/' . $name;
     if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
         fail(500, '工作目录创建失败');
     }
+    $lockOwner = 'update:' . bin2hex(random_bytes(16));
+    $containerLock = acquireDockerContainerLock($name, $lockOwner);
+    $queued = false;
+    register_shutdown_function(static function () use (&$queued, $containerLock, $lockOwner): void {
+        if (!$queued) releaseDockerContainerLock($containerLock, $lockOwner);
+    });
     // 上一轮 result 先清,否则前端轮询会读到旧结果
     @unlink($dir . '/result.json');
     $lockFile = $dir . '/op-lock';
     $lock = @fopen($lockFile, 'x');
     if ($lock === false) {
+        releaseDockerContainerLock($containerLock, $lockOwner);
         audit('dockerupdate', $name, 'fail');
         fail(409, '该容器有更新正在进行中,请等待完成');
     }
     fwrite($lock, 'dockerupdate');
     fclose($lock);
     $job = $dir . '/job.sh';
-    if (file_put_contents($job, dockerUpdateJobScript($name, $tmpl, $dir, (string) ($_SERVER['REMOTE_ADDR'] ?? '-'))) === false) {
+    if (file_put_contents($job, dockerUpdateJobScript($name, $tmpl, $dir,
+        (string) ($_SERVER['REMOTE_ADDR'] ?? '-'), $containerLock, $lockOwner)) === false) {
         @unlink($lockFile);
         fail(500, '任务脚本写入失败');
     }
     chmod($job, 0700);
     exec(PATH_ENV . ' nohup bash ' . escapeshellarg($job) . ' > /dev/null 2>&1 &');
+    $queued = true;
+}
+
+// ==================== 普通 Docker 容器参数编辑 ====================
+
+function dockerEditName(mixed $name): string
+{
+    $name = is_string($name) ? $name : '';
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/D', $name)) {
+        fail(400, '非法容器名');
+    }
+    return $name;
+}
+
+/** 服务端实时确认普通 Docker 容器;Compose 成员与暂停/重建中状态 fail closed。 */
+function dockerEditContainer(string $name): array
+{
+    $lines = [];
+    $code = 1;
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' inspect --format '
+        . escapeshellarg('{{.Id}}|{{.State.Running}}|{{.State.Status}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}')
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null',
+        $lines,
+        $code
+    );
+    if ($code !== 0) {
+        fail(404, '容器不存在: ' . $name);
+    }
+    [$id, $running, $status, $project] = array_pad(explode('|', trim((string) ($lines[0] ?? '')), 4), 4, '');
+    if ($project !== '') {
+        fail(403, '该容器由 Compose 管理,请在对应栈中编辑');
+    }
+    if (in_array(strtolower($status), ['paused', 'restarting', 'removing'], true)) {
+        fail(409, '容器当前状态不适合编辑,请先恢复运行或停止');
+    }
+    return ['id' => $id, 'running' => $running === 'true', 'status' => $status];
+}
+
+function dockerEditTemplate(string $name): array
+{
+    $path = findUserTemplate($name);
+    if ($path === null || !is_file($path)) {
+        fail(422, '该容器没有 Unraid 用户模板,不支持参数编辑');
+    }
+    $raw = (string) @file_get_contents($path);
+    if ($raw === '' || strlen($raw) > CA_TEMPLATE_MAX_BYTES) {
+        fail(422, '用户模板为空或超过大小上限');
+    }
+    $dom = @simplexml_load_string($raw, SimpleXMLElement::class, LIBXML_NONET);
+    if (!$dom instanceof SimpleXMLElement || $dom->getName() !== 'Container' || (string) $dom['version'] !== '2') {
+        fail(422, '仅支持有效的 version=2 Unraid 用户模板');
+    }
+    if (trim((string) $dom->Name) !== $name || trim((string) $dom->Repository) === '') {
+        fail(422, '用户模板 Name/Repository 与容器不匹配');
+    }
+    if (in_array(strtolower(trim((string) $dom->TailscaleEnabled)), ['true', '1', 'yes', 'on'], true)) {
+        fail(422, 'Tailscale 容器暂不支持在 App 内编辑,请使用 Unraid WebGUI');
+    }
+    $revision = hash('sha256', $raw);
+    return ['path' => $path, 'raw' => $raw, 'dom' => $dom, 'revision' => $revision];
+}
+
+function dockerEditBool(string $raw): bool
+{
+    return in_array(strtolower(trim($raw)), ['true', '1', 'yes', 'on'], true);
+}
+
+function dockerEditActiveJobId(string $name): ?string
+{
+    $path = dockerContainerLockPath($name);
+    $owner = trim((string) @file_get_contents($path));
+    if (!preg_match('/^[a-f0-9]{32}$/D', $owner)) return null;
+    $job = readJsonFile(DOCKER_EDIT_DIR . '/' . $owner . '.json');
+    if (is_array($job) && ($job['id'] ?? null) === $owner && ($job['running'] ?? false) !== true) {
+        releaseDockerContainerLock($path, $owner);
+        return null;
+    }
+    return $owner;
+}
+
+function dockerEditData(string $name): array
+{
+    $container = dockerEditContainer($name);
+    $template = dockerEditTemplate($name);
+    $dom = $template['dom'];
+    $configs = [];
+    $index = 0;
+    foreach ($dom->Config as $node) {
+        $attrs = $node->attributes();
+        $attr = static fn(string $key): string => (string) ($attrs[$key] ?? '');
+        $default = $attr('Default');
+        $raw = (string) $node;
+        $value = $raw !== '' ? $raw : $default;
+        $mask = dockerEditBool($attr('Mask'));
+        $type = $attr('Type');
+        $configs[] = [
+            'id' => 'c' . $index,
+            'target' => $attr('Target'),
+            'name' => $attr('Name'),
+            'default' => $mask ? '' : $default,
+            'value' => $mask ? '' : $value,
+            'hasValue' => $value !== '',
+            'type' => $type,
+            'mode' => $attr('Mode'),
+            'description' => $attr('Description'),
+            'display' => !in_array(strtolower($attr('Display')), ['never', 'hidden', 'hide', 'false', '0', 'no', 'off'], true),
+            'required' => dockerEditBool($attr('Required')),
+            'mask' => $mask,
+            'editable' => in_array(strtolower($type), ['variable', 'port', 'path', 'device', 'label'], true),
+        ];
+        $index++;
+    }
+    return [
+        'name' => $name,
+        'revision' => $template['revision'],
+        'repository' => (string) $dom->Repository,
+        'network' => (string) $dom->Network,
+        'webUI' => (string) $dom->WebUI,
+        'privileged' => dockerEditBool((string) $dom->Privileged),
+        'shell' => (string) $dom->Shell,
+        'extraParams' => (string) $dom->ExtraParams,
+        'postArgs' => (string) $dom->PostArgs,
+        'cpuSet' => (string) $dom->CPUset,
+        'myIP' => (string) $dom->MyIP,
+        'myMAC' => (string) $dom->MyMAC,
+        'extraNetworks' => (string) $dom->ExtraNetworks,
+        'memory' => (string) $dom->Memory,
+        'running' => $container['running'],
+        'selfManaged' => $name === 'unraid-mobile',
+        'activeJobId' => dockerEditActiveJobId($name),
+        'configs' => $configs,
+    ];
+}
+
+function dockerEditText(mixed $value, string $label, int $max = 65536): string
+{
+    if (!is_string($value) || strlen($value) > $max || str_contains($value, "\0")) {
+        fail(400, $label . '必须是有效字符串且长度不超过 ' . $max);
+    }
+    return $value;
+}
+
+/** 只改白名单节点;其余 XML 节点、属性与顺序由 SimpleXML 原样保留。 */
+function dockerEditApply(array $body, array $template): array
+{
+    $name = dockerEditName($body['name'] ?? null);
+    $revision = $body['revision'] ?? null;
+    if (!is_string($revision) || !preg_match('/^[a-f0-9]{64}$/D', $revision)
+        || !hash_equals($template['revision'], $revision)) {
+        fail(409, '模板已被其他页面修改,请重新加载后再编辑');
+    }
+    $dom = $template['dom'];
+    $fields = [
+        'repository' => 'Repository', 'network' => 'Network', 'webUI' => 'WebUI',
+        'shell' => 'Shell', 'extraParams' => 'ExtraParams', 'postArgs' => 'PostArgs',
+        'cpuSet' => 'CPUset', 'myIP' => 'MyIP', 'myMAC' => 'MyMAC',
+        'extraNetworks' => 'ExtraNetworks', 'memory' => 'Memory',
+    ];
+    foreach ($fields as $key => $nodeName) {
+        if (!array_key_exists($key, $body)) {
+            fail(400, '缺少基础字段: ' . $key);
+        }
+        $value = dockerEditText($body[$key], $key, $key === 'extraParams' || $key === 'postArgs' ? 65536 : 4096);
+        if ($key === 'repository' || $key === 'network') {
+            $value = trim($value);
+            if ($value === '' || preg_match('/\s/', $value)) {
+                fail(422, ($key === 'repository' ? '镜像仓库' : '网络模式') . '不能为空或包含空白字符');
+            }
+        }
+        $dom->{$nodeName} = $value;
+    }
+    if (!array_key_exists('privileged', $body) || !is_bool($body['privileged'])) {
+        fail(400, 'privileged 必须是布尔值');
+    }
+    $dom->Privileged = $body['privileged'] ? 'true' : 'false';
+
+    $configs = $body['configs'] ?? null;
+    if (!is_array($configs) || !array_is_list($configs) || count($configs) > 512) {
+        fail(400, 'configs 必须是最多 512 项的数组');
+    }
+    $existing = [];
+    $index = 0;
+    foreach ($dom->Config as $node) {
+        $existing['c' . $index] = $node;
+        $index++;
+    }
+    $seen = [];
+    $kept = [];
+    $secrets = [];
+    // 被删除的掩码项也可能出现在原容器恢复命令中,必须在处理删除前收集。
+    foreach ($existing as $node) {
+        if (!dockerEditBool((string) $node['Mask'])) continue;
+        foreach ([(string) $node, (string) $node['Default']] as $secret) {
+            if ($secret !== '') $secrets[] = $secret;
+        }
+    }
+    foreach ($configs as $input) {
+        if (!is_array($input)) {
+            fail(400, 'Config 项必须是对象');
+        }
+        $id = $input['id'] ?? '';
+        if (!is_string($id) || ($id !== '' && !isset($existing[$id]))
+            || ($id !== '' && isset($seen[$id]))) {
+            fail(400, 'Config ID 无效或重复');
+        }
+        if ($id === '' && !preg_match('/^[a-f0-9]{8}$/D', (string) ($input['clientId'] ?? ''))) {
+            // clientId 只用于新行追踪;服务端最终仍以本次 XML 顺序生成稳定 ID。
+            if (!isset($input['clientId']) || $input['clientId'] !== '') {
+                fail(400, '新 Config 的 clientId 无效');
+            }
+        }
+        if ($id !== '') {
+            $seen[$id] = true;
+        }
+        $isNew = $id === '';
+        if ($isNew) {
+            $node = $dom->addChild('Config');
+            $type = strtolower((string) ($input['type'] ?? ''));
+            $canonical = ['variable' => 'Variable', 'port' => 'Port', 'path' => 'Path', 'device' => 'Device', 'label' => 'Label'][$type] ?? null;
+            if ($canonical === null) {
+                fail(422, '新增 Config 仅支持 Variable/Port/Path/Device/Label');
+            }
+            $node['Type'] = $canonical;
+            $node['Default'] = '';
+            $node['Description'] = '';
+            $node['Display'] = 'always';
+            $node['Required'] = 'false';
+            $node['Mask'] = !empty($input['mask']) && $canonical === 'Variable' ? 'true' : 'false';
+        } else {
+            $node = $existing[$id];
+            $originalType = (string) $node['Type'];
+            if (!in_array(strtolower($originalType), ['variable', 'port', 'path', 'device', 'label'], true)) {
+                $unchanged = ($input['target'] ?? (string) $node['Target']) === (string) $node['Target']
+                    && ($input['name'] ?? (string) $node['Name']) === (string) $node['Name']
+                    && ($input['mode'] ?? (string) $node['Mode']) === (string) $node['Mode']
+                    && strtolower((string) ($input['type'] ?? '')) === strtolower($originalType);
+                if (!$unchanged) {
+                    fail(422, '该 Config 类型只支持保留或删除: ' . $originalType);
+                }
+                // 只读项完全未变时允许省略 value,尤其是客户端无法知道原值的掩码项。
+                $kept[] = $node;
+                continue;
+            } elseif (strtolower((string) ($input['type'] ?? '')) !== strtolower($originalType)) {
+                fail(422, '不允许改变已有 Config 的 Type');
+            }
+        }
+        $kept[] = $node;
+        $type = strtolower((string) $node['Type']);
+        $mask = dockerEditBool((string) $node['Mask']);
+        $required = dockerEditBool((string) $node['Required']);
+        $originalRaw = (string) $node;
+        $originalDefault = (string) $node['Default'];
+        if ($mask) {
+            foreach ([$originalRaw, $originalDefault] as $secret) {
+                if ($secret !== '') {
+                    $secrets[] = $secret;
+                }
+            }
+        }
+        $target = dockerEditText($input['target'] ?? '', 'Config Target', 4096);
+        $configName = dockerEditText($input['name'] ?? '', 'Config Name', 4096);
+        $mode = dockerEditText($input['mode'] ?? '', 'Config Mode', 128);
+        if ($target === '' || preg_match('/[\x00-\x20\x7f]/', $target)) {
+            fail(422, 'Config Target 不能为空或包含空白/控制字符');
+        }
+        if ($type === 'port') {
+            if (!ctype_digit($target) || (int) $target < 1 || (int) $target > 65535) {
+                fail(422, '容器端口必须是 1-65535 的数字');
+            }
+            $mode = strtolower($mode);
+            if (!in_array($mode, ['tcp', 'udp'], true)) {
+                fail(422, '端口协议只能是 tcp 或 udp');
+            }
+        } elseif ($type === 'path') {
+            if (!str_starts_with($target, '/')) {
+                fail(422, '容器路径必须是绝对路径');
+            }
+            $mode = strtolower($mode);
+            if (!in_array($mode, ['rw', 'rw,slave', 'rw,shared', 'ro', 'ro,slave', 'ro,shared'], true)) {
+                fail(422, '路径模式无效');
+            }
+        } elseif ($type === 'device' && !str_starts_with($target, '/dev/')) {
+            fail(422, '容器设备路径必须以 /dev/ 开头');
+        }
+        $node['Target'] = $target;
+        $node['Name'] = $configName;
+        $node['Mode'] = $mode;
+
+        $clearSecret = ($input['clearSecret'] ?? false) === true;
+        if ($mask && !$isNew && !array_key_exists('value', $input) && !$clearSecret) {
+            // 掩码项缺省 value = 保留原值,不用空字符串覆盖密码。
+        } else {
+            $value = $input['value'] ?? '';
+            if ($value === null && $mask && !$clearSecret) {
+                $value = null;
+            } else {
+                $value = dockerEditText($value, 'Config Value');
+            }
+            if ($clearSecret) {
+                $node['Default'] = '';
+                $node[0] = '';
+            } elseif ($value !== null) {
+                if ($type === 'port' && $value !== ''
+                    && (!ctype_digit($value) || (int) $value < 1 || (int) $value > 65535)) {
+                    fail(422, '宿主机端口必须是 1-65535 的数字');
+                }
+                if ($type === 'path' && $value !== '' && !str_starts_with($value, '/')) {
+                    fail(422, '宿主机路径必须是绝对路径');
+                }
+                if ($type === 'device' && $value !== '' && !str_starts_with($value, '/dev/')) {
+                    fail(422, '宿主设备路径必须以 /dev/ 开头');
+                }
+                $node[0] = $value;
+                // xmlToVar 在节点为空时回退 Default;显式清空必须同步清 Default。
+                if ($value === '') $node['Default'] = '';
+                if ($mask && $value !== '') {
+                    $secrets[] = $value;
+                }
+            }
+        }
+        $effective = (string) $node !== '' ? (string) $node : (string) $node['Default'];
+        if ($required && trim($effective) === '') {
+            fail(422, '必填 Config 不能为空: ' . ($configName !== '' ? $configName : $target));
+        }
+    }
+    // 客户端提交完整列表:未出现的旧 ID 即明确删除;隐藏项也由客户端原样回传。
+    foreach ($existing as $id => $node) {
+        if (!isset($seen[$id])) {
+            $domNode = dom_import_simplexml($node);
+            $domNode?->parentNode?->removeChild($domNode);
+        }
+    }
+    $xml = $dom->asXML();
+    $check = is_string($xml) ? @simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET) : false;
+    if (!is_string($xml) || !$check instanceof SimpleXMLElement) {
+        fail(422, '编辑后的模板 XML 校验失败');
+    }
+    return [
+        'name' => $name,
+        'templatePath' => $template['path'],
+        'original' => $template['raw'],
+        'candidate' => $xml,
+        'candidateRevision' => hash('sha256', $xml),
+        'secrets' => array_values(array_unique($secrets)),
+    ];
+}
+
+function dockerEditAtomicWrite(string $path, string $xml, string $suffix, ?string $expectedRevision = null): void
+{
+    if ($expectedRevision !== null) {
+        $current = @hash_file('sha256', $path);
+        if (!is_string($current) || !hash_equals($expectedRevision, $current)) {
+            throw new RuntimeException('模板在保存前已被其他页面修改,未覆盖外部修改');
+        }
+    }
+    $tmp = $path . '.' . $suffix . '.tmp';
+    if (@file_put_contents($tmp, $xml, LOCK_EX) === false) {
+        throw new RuntimeException('模板临时文件写入失败,原模板未改动');
+    }
+    @chmod($tmp, 0644);
+    $check = @simplexml_load_file($tmp, SimpleXMLElement::class, LIBXML_NONET);
+    if (!$check instanceof SimpleXMLElement || !@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('模板原子替换失败,原模板未改动');
+    }
+}
+
+function dockerEditJobScript(array $job): string
+{
+    $template = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+const EDIT_WORK_DIR = __WORK_DIR__;
+const EDIT_DOCKER = __DOCKER__;
+const EDIT_DOCKER_HELPER = __HELPER__;
+const EDIT_AUDIT = __AUDIT__;
+$job = __JOB__;
+$logPath = EDIT_WORK_DIR . '/' . $job['id'] . '.log';
+$statusPath = EDIT_WORK_DIR . '/' . $job['id'] . '.json';
+$secrets = $job['secrets'];
+
+function editJson(string $path, array $data): void
+{
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) throw new RuntimeException('任务状态编码失败');
+    $tmp = $path . '.tmp.' . getmypid();
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        throw new RuntimeException('任务状态写入失败');
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('任务状态原子替换失败');
+    }
+}
+
+function editRedact(string $text, array $secrets): string
+{
+    foreach ($secrets as $secret) {
+        if (!is_string($secret) || $secret === '') continue;
+        $variants = [$secret, htmlspecialchars($secret, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            addslashes($secret), escapeshellarg($secret)];
+        $text = str_replace(array_unique($variants), '********', $text);
+    }
+    return $text;
+}
+
+function editLog(string $message): void
+{
+    global $logPath, $secrets;
+    if ($message === '') return;
+    @file_put_contents($logPath, editRedact($message, $secrets), FILE_APPEND | LOCK_EX);
+    @chmod($logPath, 0600);
+}
+
+function editReleaseLock(string $path, string $owner): void
+{
+    if (trim((string) @file_get_contents($path)) === $owner) @unlink($path);
+}
+
+function editRun(string $command, ?string &$output = null): int
+{
+    $output = '';
+    $proc = @popen($command . ' 2>&1', 'r');
+    if ($proc === false) return 125;
+    while (($line = fgets($proc)) !== false) {
+        $output .= $line;
+        editLog($line);
+    }
+    return pclose($proc);
+}
+
+function editState(string $name): ?array
+{
+    $lines = [];
+    $code = 1;
+    exec(EDIT_DOCKER . ' inspect --format '
+        . escapeshellarg('{{.Id}}|{{.State.Running}}|{{.State.Status}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}')
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null', $lines, $code);
+    if ($code !== 0) return null;
+    [$id, $running, $status, $project] = array_pad(explode('|', trim((string) ($lines[0] ?? '')), 4), 4, '');
+    return ['id' => $id, 'running' => $running === 'true', 'status' => $status, 'project' => $project];
+}
+
+function editCommand(string $xmlPath, bool $start): string
+{
+    [$command, $name, $repository] = xmlToCommand($xmlPath);
+    if (!is_string($command) || !str_contains($command, '/docker create ')) {
+        throw new RuntimeException('官方 xmlToCommand 未生成有效的 docker create 命令');
+    }
+    return $start ? str_replace('/docker create ', '/docker run -d ', $command) : $command;
+}
+
+function editTemplateXml(string $path, ?string $expectedRevision = null): SimpleXMLElement
+{
+    if ($expectedRevision !== null) {
+        $current = @hash_file('sha256', $path);
+        if (!is_string($current) || !hash_equals($expectedRevision, $current)) {
+            throw new RuntimeException('模板在任务期间已被其他页面修改,为避免混用配置已中止');
+        }
+    }
+    $dom = @simplexml_load_file($path, SimpleXMLElement::class, LIBXML_NONET);
+    if (!$dom instanceof SimpleXMLElement) throw new RuntimeException('任务模板快照读取失败');
+    return $dom;
+}
+
+function editAssertIdentity(array $job, array $expected, ?bool $running = null): array
+{
+    $current = editState($job['name']);
+    if ($current === null || !hash_equals($expected['id'], $current['id'])) {
+        throw new RuntimeException('容器已被外部替换或删除,已中止且不会操作同名新容器');
+    }
+    if ($current['project'] !== '') throw new RuntimeException('容器已变为 Compose 管理,已中止');
+    if (in_array(strtolower($current['status']), ['paused', 'restarting', 'removing'], true)) {
+        throw new RuntimeException('容器当前状态已变化,不适合继续重建');
+    }
+    if ($running !== null && $current['running'] !== $running) {
+        throw new RuntimeException('容器运行状态已被外部修改,已中止');
+    }
+    return $current;
+}
+
+function editApplyNetworks(string $name, SimpleXMLElement $dom, bool $running): void
+{
+    $extraNetworks = trim((string) $dom->ExtraNetworks);
+    $primaryNetwork = trim((string) $dom->Network);
+    if ($extraNetworks !== '') {
+        if (!function_exists('connectExtraNetworks')) {
+            throw new RuntimeException('当前 Unraid 缺少附加网络连接助手');
+        }
+        if (!connectExtraNetworks($name, $extraNetworks, $primaryNetwork)) {
+            throw new RuntimeException('附加网络连接失败');
+        }
+    }
+    if ($running && function_exists('addRoute') && addRoute($name) === false) {
+        throw new RuntimeException('容器自定义网络路由恢复失败');
+    }
+}
+
+function editRestoreTemplate(array $job): bool
+{
+    $current = @hash_file('sha256', $job['templatePath']);
+    if (!is_string($current) || !hash_equals($job['candidateRevision'], $current)) {
+        editLog("[unraid-mobile] 模板在任务期间被其他页面修改,不覆盖该外部修改\n");
+        return false;
+    }
+    $tmp = $job['templatePath'] . '.rollback.' . $job['id'] . '.tmp';
+    if (@file_put_contents($tmp, $job['original'], LOCK_EX) === false) return false;
+    @chmod($tmp, 0644);
+    return @rename($tmp, $job['templatePath']);
+}
+
+$error = null;
+$success = false;
+$recovered = null;
+$templateRestored = null;
+$oldRemoved = false;
+$originalRunning = false;
+$originalCommand = null;
+$old = null;
+$candidateId = null;
+$finished = false;
+register_shutdown_function(static function () use (&$finished, &$error, &$recovered, &$templateRestored, $job, $statusPath): void {
+    if ($finished) return;
+    $result = ['success' => false, 'name' => $job['name'], 'finishedAt' => date('c'),
+        'error' => $error ?? '任务异常终止', 'recovered' => $recovered, 'templateRestored' => $templateRestored];
+    try {
+        editJson($statusPath, ['id' => $job['id'], 'name' => $job['name'], 'running' => false,
+            'pid' => getmypid(), 'result' => $result, 'createdAt' => $job['createdAt'],
+            'finishedAt' => $result['finishedAt']]);
+    } catch (Throwable $writeError) {
+        editLog('[unraid-mobile] 终态写入失败,保留任务锁与恢复材料: ' . $writeError->getMessage() . "\n");
+        return;
+    }
+    editReleaseLock(EDIT_WORK_DIR . '/' . $job['name'] . '.lock', $job['id']);
+});
+
+ignore_user_abort(true);
+set_time_limit(0);
+editJson($statusPath, ['id' => $job['id'], 'name' => $job['name'], 'createdAt' => $job['createdAt'],
+    'running' => true, 'pid' => getmypid(), 'result' => null]);
+editLog('[' . date('c') . '] 开始编辑普通容器: ' . $job['name'] . "\n");
+try {
+    // 命令、镜像与网络全部从任务私有不可变快照读取,绝不混用任务期间的外部模板修改。
+    $candidateDom = editTemplateXml($job['candidatePath'], $job['candidateRevision']);
+    editTemplateXml($job['templatePath'], $job['candidateRevision']);
+    $originalDom = editTemplateXml($job['originalPath']);
+    $old = editState($job['name']);
+    if ($old === null || !hash_equals($job['expectedId'], $old['id'])) {
+        throw new RuntimeException('容器已在提交后被外部替换或删除,未执行重建');
+    }
+    $old = editAssertIdentity($job, $old);
+    $originalRunning = $old['running'];
+
+    $docroot = '/usr/local/emhttp';
+    require_once $docroot . '/plugins/dynamix.docker.manager/include/DockerClient.php';
+    require_once EDIT_DOCKER_HELPER;
+    require_once $docroot . '/webGui/include/Helpers.php';
+    extract(parse_plugin_cfg('dynamix', true));
+    $var = parse_ini_file($docroot . '/state/var.ini');
+    $custom = DockerUtil::custom();
+    $subnet = DockerUtil::network($custom);
+    $primaryNetwork = trim((string) $candidateDom->Network);
+    if (!array_key_exists($primaryNetwork, $subnet)
+        && !preg_match('/^container:[A-Za-z0-9][A-Za-z0-9_.-]*$/D', $primaryNetwork)) {
+        throw new RuntimeException('网络模式不存在或无效: ' . $primaryNetwork . ';旧容器未改动');
+    }
+
+    // 候选与原命令都在删除旧容器前生成;失败可继续使用旧镜像恢复。
+    $candidateCommand = editCommand($job['candidatePath'], $originalRunning);
+    $originalCommand = editCommand($job['originalPath'], $originalRunning);
+    $repository = trim((string) $candidateDom->Repository);
+    $imageCode = 1;
+    exec(EDIT_DOCKER . ' image inspect ' . escapeshellarg($repository) . ' >/dev/null 2>&1', $unused, $imageCode);
+    if ($imageCode !== 0) {
+        editLog("[unraid-mobile] 本地缺少镜像,开始拉取(已有镜像时不会 pull)\n");
+        if (editRun(EDIT_DOCKER . ' pull ' . escapeshellarg($repository)) !== 0) {
+            throw new RuntimeException('镜像拉取失败,旧容器未改动');
+        }
+    } else {
+        editLog("[unraid-mobile] 使用本地现有镜像,不检查或拉取更新\n");
+    }
+
+    // 拉取可能耗时很长;停止前重新确认模板、容器身份、Compose 标签和用户运行状态。
+    editTemplateXml($job['candidatePath'], $job['candidateRevision']);
+    editTemplateXml($job['templatePath'], $job['candidateRevision']);
+    editAssertIdentity($job, $old, $originalRunning);
+    if ($originalRunning) {
+        editLog("[unraid-mobile] 停止原容器\n");
+        if (editRun(EDIT_DOCKER . ' stop --time 10 ' . escapeshellarg($job['name'])) !== 0) {
+            throw new RuntimeException('停止原容器失败,未删除容器');
+        }
+    }
+    // stop 后、rm 前再核对一次,绝不删除外部替换的同名容器。
+    editAssertIdentity($job, $old, false);
+    editTemplateXml($job['templatePath'], $job['candidateRevision']);
+    editLog("[unraid-mobile] 移除原容器(不删除镜像或卷)\n");
+    $rmCode = editRun(EDIT_DOCKER . ' rm -f ' . escapeshellarg($job['name']));
+    $afterRm = editState($job['name']);
+    // CLI 可能已删除旧容器但返回错误;以实际 inspect 决定后续恢复,不只看退出码。
+    $oldRemoved = $afterRm === null || $afterRm['id'] !== $old['id'];
+    if ($rmCode !== 0) throw new RuntimeException('移除原容器命令返回失败');
+    if (!$oldRemoved) throw new RuntimeException('移除命令完成后旧容器仍存在,未执行重建');
+    if ($afterRm !== null) throw new RuntimeException('删除期间出现外部同名容器,恢复流程不会删除它');
+    editLog("[unraid-mobile] 执行官方 xmlToCommand 生成的重建命令\n");
+    $createOutput = '';
+    $createCode = editRun($candidateCommand, $createOutput);
+    $createdId = null;
+    if ($createCode === 0 && preg_match('/\b[a-f0-9]{64}\b/', $createOutput, $createdMatch)) {
+        $createdId = $createdMatch[0];
+    }
+    $new = editState($job['name']);
+    // 只有本次命令返回的完整容器 ID 才能证明同名容器归属,名称冲突时绝不清理外部容器。
+    if ($createdId !== null && $new !== null && $new['id'] === $createdId) $candidateId = $createdId;
+    if ($createCode !== 0 || $createdId === null || $new === null || $new['id'] !== $createdId
+        || $new['project'] !== '' || $new['running'] !== $originalRunning) {
+        throw new RuntimeException('新容器创建、容器归属或运行状态校验失败');
+    }
+    editApplyNetworks($job['name'], $candidateDom, $originalRunning);
+    editTemplateXml($job['templatePath'], $job['candidateRevision']);
+    $success = true;
+    editLog("[unraid-mobile] 参数已应用,容器重建成功\n");
+} catch (Throwable $e) {
+    $error = editRedact($e->getMessage(), $secrets);
+    editLog('[unraid-mobile] 编辑失败: ' . $error . "\n");
+    $templateRestored = editRestoreTemplate($job);
+    try {
+        $restored = editState($job['name']);
+        if ($oldRemoved) {
+            if ($restored !== null) {
+                if ($old !== null && $restored['id'] === $old['id']) {
+                    $oldRemoved = false;
+                } elseif ($candidateId !== null && $restored['id'] === $candidateId) {
+                    editLog("[unraid-mobile] 清理本次任务创建的候选容器\n");
+                    if (editRun(EDIT_DOCKER . ' rm -f ' . escapeshellarg($job['name'])) !== 0) {
+                        throw new RuntimeException('候选容器清理失败,不覆盖同名容器');
+                    }
+                    $restored = null;
+                } else {
+                    throw new RuntimeException('检测到无法确认归属的同名容器,恢复流程不会删除它');
+                }
+            }
+            if ($restored === null && is_string($originalCommand)) {
+                editLog("[unraid-mobile] 尝试使用原模板恢复原容器\n");
+                $restoreCode = editRun($originalCommand);
+                $restored = editState($job['name']);
+                if ($restoreCode !== 0 || $restored === null || $restored['running'] !== $originalRunning) {
+                    throw new RuntimeException('原容器命令恢复或运行状态校验失败');
+                }
+                editApplyNetworks($job['name'], $originalDom, $originalRunning);
+                $recovered = true;
+            }
+        }
+        if (!$oldRemoved && $restored !== null && $old !== null && $restored['id'] === $old['id']) {
+            if ($originalRunning && !$restored['running']) {
+                // stop 成功但 rm 失败:旧容器仍在,只需重新启动,不要重复 create。
+                $startCode = editRun(EDIT_DOCKER . ' start ' . escapeshellarg($job['name']));
+                $restored = editState($job['name']);
+                if ($startCode !== 0 || $restored === null || !$restored['running']) {
+                    throw new RuntimeException('原容器重新启动失败');
+                }
+                editApplyNetworks($job['name'], $originalDom, true);
+            }
+            $recovered = $restored['running'] === $originalRunning;
+        } elseif ($recovered !== true) {
+            $recovered = false;
+        }
+    } catch (Throwable $recoveryError) {
+        $recovered = false;
+        editLog('[unraid-mobile] 恢复失败: ' . editRedact($recoveryError->getMessage(), $secrets) . "\n");
+    }
+}
+
+$result = ['success' => $success, 'name' => $job['name'], 'finishedAt' => date('c'),
+    'error' => $success ? null : $error, 'recovered' => $success ? null : $recovered,
+    'templateRestored' => $success ? null : $templateRestored];
+editJson($statusPath, ['id' => $job['id'], 'name' => $job['name'], 'createdAt' => $job['createdAt'],
+    'running' => false, 'pid' => getmypid(), 'result' => $result, 'finishedAt' => $result['finishedAt']]);
+$size = @filesize(EDIT_AUDIT);
+if ($size !== false && $size > 1048576) @rename(EDIT_AUDIT, EDIT_AUDIT . '.old');
+@file_put_contents(EDIT_AUDIT, sprintf('[%s] action=dockeredit stack=%s result=%s ip=%s\n',
+    date('c'), $job['name'], $success ? 'ok' : 'fail', $job['ip']), FILE_APPEND | LOCK_EX);
+editReleaseLock(EDIT_WORK_DIR . '/' . $job['name'] . '.lock', $job['id']);
+@unlink($job['originalPath']);
+@unlink($job['candidatePath']);
+@unlink(__FILE__);
+$finished = true;
+PHP;
+    return strtr($template, [
+        '__WORK_DIR__' => var_export(DOCKER_EDIT_DIR, true),
+        '__DOCKER__' => var_export(DOCKER, true),
+        '__HELPER__' => var_export(DOCKER_EDIT_HELPER, true),
+        '__AUDIT__' => var_export(AUDIT_LOG, true),
+        '__JOB__' => var_export($job, true),
+    ]);
+}
+
+function startDockerEdit(array $body): string
+{
+    $name = dockerEditName($body['name'] ?? null);
+    $container = dockerEditContainer($name);
+    if (!is_file(DOCKER_EDIT_HELPER)) {
+        fail(503, 'Unraid Docker Helpers.php 不存在,无法使用官方模板重建');
+    }
+    if (file_exists(DOCKER_UPDATE_DIR . '/' . $name . '/op-lock')) {
+        fail(409, '该容器有镜像更新正在进行中,请等待完成');
+    }
+    ensureDockerEditDir();
+    $id = bin2hex(random_bytes(16));
+    // 已写终态但异常退出留下的锁可以安全回收;运行中的任务绝不抢占。
+    $existingOwner = trim((string) @file_get_contents(dockerContainerLockPath($name)));
+    if (preg_match('/^[a-f0-9]{32}$/D', $existingOwner)) {
+        $existing = readJsonFile(DOCKER_EDIT_DIR . '/' . $existingOwner . '.json');
+        if (is_array($existing) && ($existing['running'] ?? false) !== true) {
+            releaseDockerContainerLock(dockerContainerLockPath($name), $existingOwner);
+        }
+    }
+    $lockPath = acquireDockerContainerLock($name, $id);
+    $queued = false;
+    register_shutdown_function(static function () use (&$queued, $lockPath, $id): void {
+        if (!$queued) releaseDockerContainerLock($lockPath, $id);
+    });
+    $templateWritten = false;
+    $prepared = null;
+    try {
+        // 获取原子锁后再复核旧更新任务,兼容部署前已在运行的更新 worker。
+        if (file_exists(DOCKER_UPDATE_DIR . '/' . $name . '/op-lock')) {
+            fail(409, '该容器有镜像更新正在进行中,请等待完成');
+        }
+        $template = dockerEditTemplate($name);
+        $prepared = dockerEditApply($body, $template);
+        $originalPath = DOCKER_EDIT_DIR . '/' . $id . '.original.xml';
+        $candidatePath = DOCKER_EDIT_DIR . '/' . $id . '.candidate.xml';
+        if (@file_put_contents($originalPath, $prepared['original'], LOCK_EX) === false
+            || @file_put_contents($candidatePath, $prepared['candidate'], LOCK_EX) === false) {
+            throw new RuntimeException('原模板或候选快照备份失败');
+        }
+        @chmod($originalPath, 0600);
+        @chmod($candidatePath, 0600);
+        $job = [
+            'id' => $id, 'name' => $name, 'createdAt' => date('c'), 'expectedId' => $container['id'],
+            'templatePath' => $prepared['templatePath'], 'originalPath' => $originalPath,
+            'candidatePath' => $candidatePath, 'original' => $prepared['original'],
+            'candidateRevision' => $prepared['candidateRevision'],
+            'secrets' => $prepared['secrets'], 'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
+        ];
+        $script = DOCKER_EDIT_DIR . '/' . $id . '.php';
+        if (@file_put_contents($script, dockerEditJobScript($job), LOCK_EX) === false) {
+            throw new RuntimeException('参数编辑 worker 写入失败');
+        }
+        @chmod($script, 0700);
+        writePluginJson(DOCKER_EDIT_DIR . '/' . $id . '.json', [
+            'id' => $id, 'name' => $name, 'createdAt' => $job['createdAt'], 'running' => true, 'result' => null,
+        ]);
+        @file_put_contents(DOCKER_EDIT_DIR . '/' . $id . '.log', '', LOCK_EX);
+        @chmod(DOCKER_EDIT_DIR . '/' . $id . '.log', 0600);
+        // rename 前再次核对提交 revision;worker 只读 candidatePath,不再跟随线上模板变化。
+        dockerEditAtomicWrite($prepared['templatePath'], $prepared['candidate'], $id, $template['revision']);
+        $templateWritten = true;
+        audit('dockeredit', $name, 'queued');
+        $spawnOutput = [];
+        $spawnCode = 1;
+        exec(PATH_ENV . ' nohup /usr/bin/php ' . escapeshellarg($script)
+            . ' > /dev/null 2>&1 < /dev/null & echo $!', $spawnOutput, $spawnCode);
+        usleep(100000);
+        $pid = (int) end($spawnOutput);
+        $latest = readJsonFile(DOCKER_EDIT_DIR . '/' . $id . '.json');
+        $alive = $pid > 0 && (!function_exists('posix_kill') || @posix_kill($pid, 0));
+        if ($spawnCode !== 0 || (!is_array($latest['result'] ?? null) && !$alive)) {
+            throw new RuntimeException('参数编辑后台 worker 启动失败');
+        }
+        $queued = true;
+        return $id;
+    } catch (Throwable $e) {
+        if ($templateWritten && is_array($prepared)) {
+            try {
+                dockerEditAtomicWrite($prepared['templatePath'], $prepared['original'],
+                    $id . '.startup-rollback', $prepared['candidateRevision']);
+            } catch (Throwable) {
+                // 不覆盖外部修改;保留快照和日志供排查。
+            }
+        }
+        releaseDockerContainerLock($lockPath, $id);
+        fail(500, $e->getMessage());
+    }
+}
+
+function readDockerEditJob(string $id): ?array
+{
+    if (!preg_match('/^[a-f0-9]{32}$/D', $id)) return null;
+    $job = readJsonFile(DOCKER_EDIT_DIR . '/' . $id . '.json');
+    if (!is_array($job) || ($job['id'] ?? null) !== $id) return null;
+    $running = ($job['running'] ?? false) === true;
+    $pid = (int) ($job['pid'] ?? 0);
+    // worker 被 kill 且 shutdown 未能执行时,不能让客户端永久轮询 running:true。
+    if ($running && $pid > 0 && function_exists('posix_kill') && !@posix_kill($pid, 0)) {
+        $running = false;
+        $job['running'] = false;
+        $job['finishedAt'] = date('c');
+        $job['result'] = ['success' => false, 'name' => (string) ($job['name'] ?? ''),
+            'finishedAt' => $job['finishedAt'], 'error' => '参数编辑进程异常终止,请根据日志检查模板与容器状态',
+            'recovered' => null, 'templateRestored' => null];
+        writePluginJson(DOCKER_EDIT_DIR . '/' . $id . '.json', $job);
+    }
+    if (!$running) {
+        releaseDockerContainerLock(dockerContainerLockPath((string) ($job['name'] ?? '')), $id);
+    }
+    return [
+        'id' => $id,
+        'name' => (string) ($job['name'] ?? ''),
+        'running' => $running,
+        'log' => tailFile(DOCKER_EDIT_DIR . '/' . $id . '.log'),
+        'result' => is_array($job['result'] ?? null) ? $job['result'] : null,
+    ];
 }
 
 // ==================== Unraid 官方插件管理 ====================
@@ -3104,6 +3978,7 @@ function readCapabilities(): array
         'deps' => [
             'templateUserDir' => is_dir(TEMPLATE_USER_DIR) && is_writable(TEMPLATE_USER_DIR),
             'updateContainerScript' => is_file(DOCKER_UPDATE_SCRIPT),
+            'dockerEditHelper' => is_file(DOCKER_EDIT_HELPER),
             'dockerCli' => is_executable(DOCKER),
             'emcmd' => is_executable(EMCMD),
             'pluginCli' => is_executable('/usr/local/sbin/plugin'),
@@ -3197,6 +4072,19 @@ if ($method === 'GET') {
         $job = readCaJob($id);
         if ($job === null) {
             fail(404, 'CA 安装任务不存在');
+        }
+        ok($job);
+    }
+
+    if ($action === 'dockertemplate') {
+        ok(dockerEditData(dockerEditName($_GET['name'] ?? null)));
+    }
+
+    if ($action === 'dockereditjob') {
+        $id = (string) ($_GET['id'] ?? '');
+        $job = readDockerEditJob($id);
+        if ($job === null) {
+            fail(404, '参数编辑任务不存在');
         }
         ok($job);
     }
@@ -3328,6 +4216,11 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
 
     if ($action === 'cainstall') {
         $jobId = startCaInstall($body);
+        ok(['jobId' => $jobId, 'async' => true]);
+    }
+
+    if ($action === 'dockeredit') {
+        $jobId = startDockerEdit($body);
         ok(['jobId' => $jobId, 'async' => true]);
     }
 

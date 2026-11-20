@@ -183,9 +183,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.8/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.8/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -208,6 +208,7 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 | 日志 | ✅ | logs(tail) { lines { timestamp, message } } |
 | 统计 | ✅ | stats { cpuPercent, memUsage, memPercent }(订阅) |
 | 启停 | ✅ | mutation |
+| 普通容器参数编辑 | ✅(Pro) | 原生 iOS；compose-api 编辑 Unraid 用户模板并通过官方 `xmlToCommand` 重建 |
 | 端口映射 / 挂载 / 网络 / 磁盘占用 | ✅ | ports / mounts / networkSettings / size*(详情查询) |
 
 ### 虚拟机
@@ -221,6 +222,11 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.4.9(2026-11-20)
+
+- 原生 iOS 新增 Pro 普通 Docker 容器参数编辑，基于 Unraid 用户模板，支持后台进度、秘密保留、运行状态保持、冲突保护和失败恢复
+- 已有本地镜像不会被拉取或升级；Compose 成员、无用户模板、Tailscale 专用容器及重命名仍不支持。compose-api 已更新，**升级后需重跑安装脚本**。原生版本为 TestFlight 2.0.0(104)
 
 ### v1.4.8(2026-11-19)
 

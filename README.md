@@ -209,9 +209,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.8/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.8/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -237,6 +237,7 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 | Logs | ✅ | logs(tail) { lines { timestamp, message } } |
 | Stats | ✅ | stats { cpuPercent, memUsage, memPercent } (subscription) |
 | Start/stop | ✅ | mutation |
+| Standalone container parameter editing | ✅ (Pro) | Native iOS; compose-api edits the Unraid user template and recreates through official `xmlToCommand` |
 | Port mappings / mounts / network / disk usage | ✅ | ports / mounts / network / size* (details query) |
 
 ### Virtual machines
@@ -250,6 +251,11 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.4.9 (2026-11-20)
+
+- Native iOS adds Pro parameter editing for standalone Docker containers through Unraid user templates, with background progress, secret preservation, running-state retention, conflict protection, and failure recovery
+- Existing local images are reused without pulling or upgrading; Compose members, containers without user templates, Tailscale-specific containers, and renaming remain excluded. compose-api is updated, so **re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (104)
 
 ### v1.4.8 (2026-11-19)
 

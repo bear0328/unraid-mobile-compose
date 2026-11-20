@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.9] - 2026-11-20
+
+### Added
+
+- Native iOS adds Pro parameter editing for standalone Docker containers through their Unraid user templates, covering basic settings, ports, paths, variables, devices, labels, and advanced runtime options
+- Container edits run as recoverable background jobs with revision conflict protection, masked-secret preservation, original running-state retention, rollback, and extra-network restoration
+
+### Changed
+
+- Parameter edits use the official `xmlToCommand` path and reuse existing local images without pulling or upgrading them. Compose members, containers without user templates, Tailscale-specific containers, and renaming remain excluded
+- compose-api is updated, so **re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (104)
+
 ## [1.4.8] - 2026-11-19
 
 ### Added
