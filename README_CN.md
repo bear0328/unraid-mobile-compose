@@ -183,9 +183,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -222,6 +222,11 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.1(2026-11-21)
+
+- 修复用户 Docker 模板中 `file://` 本地图标被忽略的问题，Unraid Mobile 等容器及对应 Compose 栈可正常显示已有图标
+- 本地图标仅限 Unraid 标准 `docker-icons` 目录，经格式与大小校验后通过 API Key 鉴权读取，不暴露宿主路径。compose-api 已更新，**升级后需重跑安装脚本**；无需新原生构建
 
 ### v1.5.0(2026-11-21)
 

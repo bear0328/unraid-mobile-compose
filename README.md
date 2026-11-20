@@ -209,9 +209,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -251,6 +251,11 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.1 (2026-11-21)
+
+- Fixed automatic matching ignoring `file://` local icons in user Docker templates, allowing Unraid Mobile and other containers and their Compose stacks to show existing icons
+- Local icons are limited to Unraid's standard `docker-icons` directories, validated and served with API-key authentication without exposing host paths. compose-api is updated, so **re-run the install script after upgrading**; no new native build is required
 
 ### v1.5.0 (2026-11-21)
 

@@ -1239,6 +1239,34 @@ function containerIconImageType(string $bytes): ?string
     return null;
 }
 
+/** 内容寻址存储;自动导入失败时返回 null,让图标解析继续降级而非中断容器列表。 */
+function storeContainerIconBytes(string $bytes): ?string
+{
+    $extension = containerIconImageType($bytes);
+    if ($bytes === '' || strlen($bytes) > CONTAINER_ICON_MAX_BYTES || $extension === null) {
+        return null;
+    }
+    if (!is_dir(CONTAINER_ICON_FILES_DIR)
+        && !@mkdir(CONTAINER_ICON_FILES_DIR, 0700, true)
+        && !is_dir(CONTAINER_ICON_FILES_DIR)) {
+        return null;
+    }
+    $id = hash('sha256', $bytes) . '.' . $extension;
+    $path = CONTAINER_ICON_FILES_DIR . '/' . $id;
+    if (!is_file($path)) {
+        $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+        if (@file_put_contents($tmp, $bytes, LOCK_EX) === false) {
+            return null;
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            return null;
+        }
+    }
+    return $id;
+}
+
 function storeContainerIconUpload(mixed $encoded): string
 {
     if (!is_string($encoded) || $encoded === '' || strlen($encoded) > 2796204) {
@@ -1248,29 +1276,54 @@ function storeContainerIconUpload(mixed $encoded): string
     if (!is_string($bytes) || $bytes === '' || strlen($bytes) > CONTAINER_ICON_MAX_BYTES) {
         fail(400, '图片 Base64 无效或超过 2MB');
     }
-    $extension = containerIconImageType($bytes);
-    if ($extension === null) {
+    if (containerIconImageType($bytes) === null) {
         fail(415, '仅支持 PNG、JPEG、WebP 图片');
     }
-    if (!is_dir(CONTAINER_ICON_FILES_DIR)
-        && !@mkdir(CONTAINER_ICON_FILES_DIR, 0700, true)
-        && !is_dir(CONTAINER_ICON_FILES_DIR)) {
-        fail(500, '图片目录创建失败');
-    }
-    $id = hash('sha256', $bytes) . '.' . $extension;
-    $path = CONTAINER_ICON_FILES_DIR . '/' . $id;
-    if (!is_file($path)) {
-        $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
-        if (@file_put_contents($tmp, $bytes, LOCK_EX) === false) {
-            fail(500, '图片写入失败');
-        }
-        @chmod($tmp, 0600);
-        if (!@rename($tmp, $path)) {
-            @unlink($tmp);
-            fail(500, '图片保存失败');
-        }
+    $id = storeContainerIconBytes($bytes);
+    if ($id === null) {
+        fail(500, '图片保存失败');
     }
     return $id;
+}
+
+/**
+ * 用户模板的 file:// 图标仅允许 Unraid 标准 docker-icons 目录。
+ * 导入为内容哈希文件后经统一鉴权接口读取,不把宿主路径返回给 Web/App。
+ */
+function containerTemplateIconReference(mixed $raw): ?string
+{
+    $https = containerIconUrl($raw);
+    if ($https !== null) {
+        return $https;
+    }
+    if (!is_string($raw)) {
+        return null;
+    }
+    $value = trim($raw);
+    if (!str_starts_with($value, 'file://')) {
+        return null;
+    }
+    $path = substr($value, 7);
+    $iconDirs = ['/mnt/cache/appdata/docker-icons', '/mnt/user/appdata/docker-icons'];
+    if ($path === '' || preg_match('/[\x00-\x1F?#\\\\]/', $path)
+        || !preg_match('/\.(png|jpe?g|webp)$/iD', $path)
+        || !in_array(dirname($path), $iconDirs, true)
+        || !is_file($path) || is_link($path)) {
+        return null;
+    }
+    $realPath = realpath($path);
+    $realDir = realpath(dirname($path));
+    $size = @filesize($path);
+    if ($realPath === false || $realDir === false || dirname($realPath) !== $realDir
+        || !is_int($size) || $size < 1 || $size > CONTAINER_ICON_MAX_BYTES) {
+        return null;
+    }
+    $bytes = @file_get_contents($path);
+    if (!is_string($bytes)) {
+        return null;
+    }
+    $id = storeContainerIconBytes($bytes);
+    return $id === null ? null : '/compose-api/?action=iconfile&id=' . $id;
 }
 
 function sendContainerIconFile(mixed $rawId): void
@@ -1359,7 +1412,9 @@ function dockerContainerIconContext(): array
             if ($dom === null) {
                 continue;
             }
-            $icon = containerIconUrl((string) ($dom->Icon ?? ''));
+            $icon = $isUser
+                ? containerTemplateIconReference((string) ($dom->Icon ?? ''))
+                : containerIconUrl((string) ($dom->Icon ?? ''));
             $repo = caAppsRepoKey((string) ($dom->Repository ?? ''));
             if ($isUser) {
                 addContainerIconCandidate($names, trim((string) ($dom->Name ?? '')), $icon);

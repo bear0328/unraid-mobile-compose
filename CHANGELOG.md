@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.1] - 2026-11-21
+
+### Fixed
+
+- Automatic icons now support `file://` PNG/JPEG/WebP images in user Docker templates, fixing Unraid Mobile and other containers whose existing template icons were ignored
+- Local icons are restricted to Unraid's standard `docker-icons` directories, validated by path, size, and actual image format, imported under content-derived hashes, and served through the existing API-key-authenticated endpoint without exposing host paths to Web or the app
+- compose-api is updated, so **re-run the install script after upgrading**. Web and the existing TestFlight 2.0.0 (107) build use this fix automatically; no new native build is required
+
 ## [1.5.0] - 2026-11-21
 
 ### Added

@@ -2,6 +2,14 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.5.1] - 2026-11-21
+
+### 修复
+
+- 自动图标现支持用户 Docker 模板中的 `file://` 本地 PNG/JPEG/WebP，修复 Unraid Mobile 等容器已有模板图标却不显示的问题
+- 本地图标仅允许 Unraid 标准 `docker-icons` 目录，校验路径、文件大小和真实图片格式后按内容哈希导入，并通过原有 API Key 鉴权接口读取，不向 Web/App 暴露宿主路径
+- compose-api 已更新，**升级后需重跑安装脚本**；Web 与现有 TestFlight 2.0.0(107) 会自动使用该修复，无需新原生构建
+
 ## [1.5.0] - 2026-11-21
 
 ### 新增
