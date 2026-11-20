@@ -30,6 +30,6 @@ services:
 
 secrets:
   dav_password:
-    file: ./secrets/dav_password
+    file: ${APPDATA_DIR:-/mnt/user/appdata/unraid-mobile}/secrets/dav_password
   log_password:
-    file: ./secrets/log_password
+    file: ${APPDATA_DIR:-/mnt/user/appdata/unraid-mobile}/secrets/log_password

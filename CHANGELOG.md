@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] - 2026-11-21
+
+### Added
+
+- Web and native iOS now show application icons in Docker and Compose lists and details, using exact matches from user templates, community templates, Community Applications, and Dashboard Icons
+- Compose stacks favor matching primary containers or services. Multi-service stacks share an automatically resolved icon only when every member resolves to the same value, preventing auxiliary Redis/Postgres containers from representing the whole stack
+- Web Docker/Compose details now support custom HTTPS icons, local PNG/JPEG/WebP uploads up to 2 MB, and restoration of automatic matching. Settings persist on Unraid and sync to the app without changing templates or Compose files or recreating containers
+
+### Security
+
+- Uploads validate Base64, size, and magic bytes, use content-derived SHA-256 filenames, and are written atomically with mode 0600 for both configuration and image files
+- Uploaded images are served only through strict local references with API-key authentication, MIME/size limits, and defensive response headers. External URLs never receive the API key
+
+### Changed
+
+- Icon enhancement and image failures no longer break Docker or Compose lists. Native snapshots remain backward compatible, and stale image responses are isolated across server or configuration changes
+- compose-api is updated, so **re-run the install script after upgrading**. Native changes ship in TestFlight 2.0.0 (107)
+
 ## [1.4.9] - 2026-11-20
 
 ### Added

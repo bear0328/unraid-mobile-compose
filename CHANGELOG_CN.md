@@ -2,6 +2,24 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.5.0] - 2026-11-21
+
+### 新增
+
+- Web 与原生 iOS 的 Docker、Compose 列表和详情统一显示应用图标，自动来源依次覆盖用户模板、社区模板、Community Applications 精确匹配和 Dashboard Icons 精确匹配
+- Compose 栈优先采用同名主容器或主服务图标；多成员只有在全部解析且图标一致时才共用，避免 Redis、Postgres 等辅助容器图标冒充整个栈
+- Web 的 Docker/Compose 详情新增手工 HTTPS 图标、本地上传 PNG/JPEG/WebP（原始大小最大 2MB）以及恢复自动匹配；设置持久化在 Unraid 并同步到 App，不修改模板或 Compose 文件，也不触发容器重建
+
+### 安全
+
+- 上传图片校验 Base64、大小和 magic bytes，以内容 SHA-256 命名并原子保存；配置与图片权限为 0600
+- 本地上传图片仅通过严格相对路径和 API Key 鉴权读取，限制 MIME、大小与响应安全头；任意外部 URL 均不会携带 API Key
+
+### 变更
+
+- 图标接口或图片加载失败不影响容器与 Compose 主列表；原生快照兼容旧数据，切机与配置变更会隔离旧图片响应
+- compose-api 已更新，**升级后需重跑安装脚本**。原生版本为 TestFlight 2.0.0(107)
+
 ## [1.4.9] - 2026-11-20
 
 ### 新增

@@ -38,6 +38,11 @@ declare(strict_types=1);
  *   GET  ?action=updates                    有更新的镜像 ref 列表(合并 webGui 主缓存与
  *                                           Compose 补充缓存,剥 library/ 前缀;补充缓存
  *                                           过期时后台补扫,请求不同步等待 Registry)
+ *   GET  ?action=containericons             全部容器名 → 图标引用(手工优先,模板/CA/索引兜底)
+ *   GET  ?action=iconfile&id=X              已上传图标(鉴权二进制响应,仅内容哈希文件)
+ *   PUT  {action:seticon,target,name,icon|data}
+ *                                         docker/compose 手工 HTTPS 图标、PNG/JPEG/WebP 上传;
+ *                                         icon:null 恢复自动匹配,不修改模板或重建容器
  *   GET  ?action=plugins                    已安装插件与本地检查缓存(不联网)
  *   GET  ?action=pluginjob&id=X             插件异步任务状态/进度/截尾日志
  *   GET  ?action=caapps&refresh=0|1         CA 应用商店目录(只读):官方 feed 白名单字段 + /tmp 短缓存
@@ -147,6 +152,10 @@ const CA_APPS_FIELDS = [
 ];
 // 已安装 Docker 模板目录(只读扫描,用于保守判断安装态)
 const DOCKER_TEMPLATE_COMMUNITY_DIR = '/boot/config/plugins/dockerMan/templates-community';
+// 手工图标持久化:独立配置,不写 Docker 模板或 Compose 文件;上传仅由显式 PUT 触发。
+const CONTAINER_ICON_CONFIG = '/boot/config/plugins/unraid-mobile/container-icons.json';
+const CONTAINER_ICON_FILES_DIR = '/boot/config/plugins/unraid-mobile/icons';
+const CONTAINER_ICON_MAX_BYTES = 2097152;
 // 服务器电源(高危不可逆):operation → 固定命令的严格白名单表。
 // 命令与官方 WebGUI 同款(/sbin/reboot -n、/sbin/poweroff -n);用户输入只做表键查表,
 // 绝不拼进 shell 命令行 —— 表里没有的 operation 一律拒绝。
@@ -310,20 +319,24 @@ function composeLsMap(): array
  * 会让前端「更新」徽章的前缀匹配失配。单次 docker ps -a(含停止的容器),
  * 失败返回空数组静默降级(前端回退前缀启发式)。
  */
-function projectContainersMap(): array
+function projectContainersMap(?array &$serviceMap = null): array
 {
     $out = [];
     exec(
         PATH_ENV . ' ' . DOCKER
         . ' ps -a --filter label=com.docker.compose.project'
-        . " --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}' 2>/dev/null",
+        . " --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}' 2>/dev/null",
         $out
     );
     $map = [];
+    $serviceMap = [];
     foreach ($out as $line) {
-        $parts = explode('|', trim($line), 2);
-        if (count($parts) === 2 && $parts[0] !== '' && $parts[1] !== '') {
+        $parts = explode('|', trim($line), 3);
+        if (count($parts) === 3 && $parts[0] !== '' && $parts[1] !== '') {
             $map[$parts[1]][] = $parts[0];
+            if ($parts[2] !== '') {
+                $serviceMap[$parts[1]][$parts[0]] = $parts[2];
+            }
         }
     }
     return $map;
@@ -995,13 +1008,500 @@ function readImageUpdates(): array
     return $updates;
 }
 
-function stackSummary(string $dirName, array $lsMap, array $pcMap = []): array
+/** 图标 URL 与前端同口径:只接受无凭据 HTTPS 绝对地址,其余一律无图标。 */
+function containerIconUrl(mixed $raw): ?string
 {
+    if (!is_string($raw)) {
+        return null;
+    }
+    $url = trim($raw);
+    if ($url === '' || strlen($url) > 2048 || preg_match('/[\x00-\x20]/', $url)) {
+        return null;
+    }
+    $parts = @parse_url($url);
+    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || !isset($parts['host'])) {
+        return null;
+    }
+    return isset($parts['user']) || isset($parts['pass']) ? null : $url;
+}
 
+/** 同键多来源冲突时丢弃候选,不任意选择一个可能错误的应用图标。 */
+function addContainerIconCandidate(array &$map, string $key, ?string $icon): void
+{
+    if ($key === '' || $icon === null) {
+        return;
+    }
+    if (array_key_exists($key, $map) && $map[$key] !== $icon) {
+        $map[$key] = null;
+        return;
+    }
+    $map[$key] = $icon;
+}
+
+const DASHBOARD_ICONS_TREE_URL = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main/tree.json';
+const DASHBOARD_ICONS_PNG_BASE = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/';
+const DASHBOARD_ICONS_CACHE_FILE = PLUGIN_WORK_DIR . '/dashboard-icons.json';
+const DASHBOARD_ICONS_CACHE_TTL = 604800;
+const DASHBOARD_ICONS_RETRY_INTERVAL = 300;
+const DASHBOARD_ICONS_MAX_BYTES = 4194304;
+
+/** Dashboard Icons 官方 tree.json 的 png 文件名 → 精确 slug 集合。 */
+function dashboardIconSetFromFiles(mixed $files): array
+{
+    $icons = [];
+    if (!is_array($files)) {
+        return $icons;
+    }
+    foreach ($files as $file) {
+        if (is_string($file) && preg_match('/^([a-z0-9][a-z0-9._-]{0,127})\.png$/D', $file, $match)) {
+            $icons[$match[1]] = true;
+        }
+    }
+    return $icons;
+}
+
+function dashboardIconWriteCache(int $cachedAt, int $checkedAt, array $icons): bool
+{
+    $dir = dirname(DASHBOARD_ICONS_CACHE_FILE);
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        return false;
+    }
+    $json = json_encode([
+        'cachedAt' => $cachedAt,
+        'checkedAt' => $checkedAt,
+        'files' => array_map(static fn(string $name): string => $name . '.png', array_keys($icons)),
+    ], JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return false;
+    }
+    $tmp = DASHBOARD_ICONS_CACHE_FILE . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        @unlink($tmp);
+        return false;
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, DASHBOARD_ICONS_CACHE_FILE)) {
+        @unlink($tmp);
+        return false;
+    }
+    return true;
+}
+
+/** 小索引允许短超时刷新;CA 大 feed 仍只读已有缓存。失败用旧索引并限流重试。 */
+function dashboardIconSet(): array
+{
+    $cache = readJsonFile(DASHBOARD_ICONS_CACHE_FILE) ?? [];
+    $cachedAt = is_int($cache['cachedAt'] ?? null) ? $cache['cachedAt'] : 0;
+    $checkedAt = is_int($cache['checkedAt'] ?? null) ? $cache['checkedAt'] : 0;
+    $icons = dashboardIconSetFromFiles($cache['files'] ?? null);
+    $now = time();
+    if (($icons !== [] && $now - $cachedAt < DASHBOARD_ICONS_CACHE_TTL)
+        || ($checkedAt > 0 && $now - $checkedAt < DASHBOARD_ICONS_RETRY_INTERVAL)) {
+        return $icons;
+    }
+
+    $http = caAppsHttpGet(DASHBOARD_ICONS_TREE_URL, 3, 5, DASHBOARD_ICONS_MAX_BYTES);
+    $data = $http['ok'] ? json_decode($http['body'], true) : null;
+    $fresh = is_array($data) ? dashboardIconSetFromFiles($data['png'] ?? null) : [];
+    if ($fresh !== []) {
+        dashboardIconWriteCache($now, $now, $fresh);
+        return $fresh;
+    }
+    dashboardIconWriteCache($cachedAt, $now, $icons);
+    return $icons;
+}
+
+function containerIconSlug(string $raw): string
+{
+    $slug = strtolower(preg_replace('/[^A-Za-z0-9._-]+/', '-', trim($raw)) ?? '');
+    return trim($slug, '.-_');
+}
+
+function containerIconFileId(mixed $id): ?string
+{
+    if (!is_string($id) || !preg_match('/^([a-f0-9]{64})\.(png|jpg|webp)$/D', $id, $matches)) {
+        return null;
+    }
+    // 扩展名本身也是内容类型白名单的一部分,不能由请求指定 MIME。
+    return $matches[1] . '.' . $matches[2];
+}
+
+/** 最终图标引用:公网 HTTPS 或本 API 的严格本地上传路径;绝不接受其他相对地址。 */
+function containerIconReference(mixed $raw): ?string
+{
+    $https = containerIconUrl($raw);
+    if ($https !== null) {
+        return $https;
+    }
+    if (!is_string($raw)) {
+        return null;
+    }
+    $value = trim($raw);
+    if (!preg_match(
+        '~^/compose-api/\?action=iconfile&id=([a-f0-9]{64}\.(?:png|jpg|webp))$~D',
+        $value,
+        $matches
+    )) {
+        return null;
+    }
+    return containerIconFileId($matches[1]) !== null ? $value : null;
+}
+
+/** 手工配置 → 可直接返回给 Web/App 的引用;损坏或文件缺失时回退自动匹配。 */
+function manualContainerIcons(bool $fresh = false): array
+{
+    static $cache = null;
+    if ($fresh) {
+        $cache = null;
+    }
+    if (is_array($cache)) {
+        return $cache;
+    }
+    $cache = [];
+    $config = readJsonFile(CONTAINER_ICON_CONFIG);
+    foreach ($config['icons'] ?? [] as $key => $entry) {
+        if (!is_string($key) || !preg_match('/^(docker|compose):[^\x00-\x1F]{1,128}$/D', $key)
+            || !is_array($entry)) {
+            continue;
+        }
+        $type = $entry['type'] ?? null;
+        if ($type === 'url') {
+            $icon = containerIconUrl($entry['value'] ?? null);
+        } elseif ($type === 'file') {
+            $id = containerIconFileId($entry['id'] ?? null);
+            $icon = $id !== null && is_file(CONTAINER_ICON_FILES_DIR . '/' . $id)
+                ? '/compose-api/?action=iconfile&id=' . $id
+                : null;
+        } else {
+            $icon = null;
+        }
+        if ($icon !== null) {
+            $cache[$key] = $icon;
+        }
+    }
+    return $cache;
+}
+
+function writeManualContainerIcon(string $key, ?array $entry): void
+{
+    $parent = dirname(CONTAINER_ICON_CONFIG);
+    if (!is_dir($parent) && !@mkdir($parent, 0700, true) && !is_dir($parent)) {
+        fail(500, '图标配置目录创建失败');
+    }
+    $lock = @fopen(CONTAINER_ICON_CONFIG . '.lock', 'c');
+    if ($lock === false || !@flock($lock, LOCK_EX)) {
+        if (is_resource($lock)) {
+            @fclose($lock);
+        }
+        fail(503, '图标配置正被其他请求更新,请重试');
+    }
+    try {
+        $config = readJsonFile(CONTAINER_ICON_CONFIG) ?? ['version' => 1, 'icons' => []];
+        $icons = is_array($config['icons'] ?? null) ? $config['icons'] : [];
+        if ($entry === null) {
+            unset($icons[$key]);
+        } else {
+            $icons[$key] = $entry;
+        }
+        $json = json_encode(['version' => 1, 'icons' => $icons],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) {
+            fail(500, '图标配置编码失败');
+        }
+        $tmp = CONTAINER_ICON_CONFIG . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+        if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+            fail(500, '图标配置写入失败');
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, CONTAINER_ICON_CONFIG)) {
+            @unlink($tmp);
+            fail(500, '图标配置保存失败');
+        }
+    } finally {
+        @flock($lock, LOCK_UN);
+        @fclose($lock);
+    }
+    manualContainerIcons(true);
+}
+
+/** 仅 magic bytes 白名单;不解码/重编码图片,避免图像炸弹消耗宿主 CPU/内存。 */
+function containerIconImageType(string $bytes): ?string
+{
+    if (str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+        return 'png';
+    }
+    if (str_starts_with($bytes, "\xff\xd8\xff")) {
+        return 'jpg';
+    }
+    if (strlen($bytes) >= 12 && substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WEBP') {
+        return 'webp';
+    }
+    return null;
+}
+
+function storeContainerIconUpload(mixed $encoded): string
+{
+    if (!is_string($encoded) || $encoded === '' || strlen($encoded) > 2796204) {
+        fail(400, '图片必须是 Base64,且原始大小不能超过 2MB');
+    }
+    $bytes = base64_decode($encoded, true);
+    if (!is_string($bytes) || $bytes === '' || strlen($bytes) > CONTAINER_ICON_MAX_BYTES) {
+        fail(400, '图片 Base64 无效或超过 2MB');
+    }
+    $extension = containerIconImageType($bytes);
+    if ($extension === null) {
+        fail(415, '仅支持 PNG、JPEG、WebP 图片');
+    }
+    if (!is_dir(CONTAINER_ICON_FILES_DIR)
+        && !@mkdir(CONTAINER_ICON_FILES_DIR, 0700, true)
+        && !is_dir(CONTAINER_ICON_FILES_DIR)) {
+        fail(500, '图片目录创建失败');
+    }
+    $id = hash('sha256', $bytes) . '.' . $extension;
+    $path = CONTAINER_ICON_FILES_DIR . '/' . $id;
+    if (!is_file($path)) {
+        $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+        if (@file_put_contents($tmp, $bytes, LOCK_EX) === false) {
+            fail(500, '图片写入失败');
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            fail(500, '图片保存失败');
+        }
+    }
+    return $id;
+}
+
+function sendContainerIconFile(mixed $rawId): void
+{
+    $id = containerIconFileId($rawId);
+    $path = $id === null ? null : CONTAINER_ICON_FILES_DIR . '/' . $id;
+    if ($id === null || $path === null || !is_file($path)) {
+        fail(404, '图标文件不存在');
+    }
+    $mime = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp'][pathinfo($id, PATHINFO_EXTENSION)];
+    $size = filesize($path);
+    if ($size === false || $size > CONTAINER_ICON_MAX_BYTES) {
+        fail(404, '图标文件不可用');
+    }
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . $size);
+    header('X-Content-Type-Options: nosniff');
+    header("Content-Security-Policy: default-src 'none'; sandbox");
+    header('Cache-Control: private, max-age=31536000, immutable');
+    readfile($path);
+    exit;
+}
+
+function setContainerIcon(array $body): array
+{
+    $target = $body['target'] ?? null;
+    if ($target !== 'docker' && $target !== 'compose') {
+        fail(400, 'target 必须是 docker 或 compose');
+    }
+    $name = $target === 'docker' ? dockerEditName($body['name'] ?? null) : validName($body['name'] ?? null);
+    if ($target === 'docker') {
+        $noop = [];
+        $code = 1;
+        exec(PATH_ENV . ' ' . DOCKER . ' inspect ' . escapeshellarg($name) . ' >/dev/null 2>&1', $noop, $code);
+        if ($code !== 0) {
+            fail(404, '容器不存在: ' . $name);
+        }
+    }
+    $hasUrl = array_key_exists('icon', $body);
+    $hasUpload = array_key_exists('data', $body);
+    if ($hasUrl === $hasUpload) {
+        fail(400, '必须且只能提供 icon 或 data;icon:null 表示恢复自动匹配');
+    }
+    if ($hasUpload) {
+        $entry = ['type' => 'file', 'id' => storeContainerIconUpload($body['data'])];
+    } elseif ($body['icon'] === null) {
+        $entry = null;
+    } else {
+        $url = containerIconUrl($body['icon']);
+        if ($url === null) {
+            fail(400, '手工图标必须是无凭据的 HTTPS 地址');
+        }
+        $entry = ['type' => 'url', 'value' => $url];
+    }
+    writeManualContainerIcon($target . ':' . $name, $entry);
+    audit('seticon', $target . ':' . $name, 'ok');
+
+    if ($target === 'docker') {
+        foreach (dockerContainerIcons() ?? [] as $row) {
+            if ($row['name'] === $name) {
+                return ['icon' => $row['icon']];
+            }
+        }
+        fail(503, '图标已保存,但刷新容器图标失败');
+    }
+    $services = [];
+    $containers = projectContainersMap($services);
+    $summary = stackSummary($name, composeLsMap(), $containers,
+        dockerContainerIconMap(dockerContainerIcons()), $services);
+    return ['icon' => $summary['icon']];
+}
+
+/**
+ * 模板与 CA 只读扫描;Dashboard Icons 小索引有独立短超时/缓存,不触发 CA feed 下载。
+ * 每次请求一次扫描;不逐容器读 XML 或请求远程图片。
+ */
+function dockerContainerIconContext(): array
+{
+    $names = [];
+    $userRepos = [];
+    $communityRepos = [];
+    foreach ([TEMPLATE_USER_DIR, DOCKER_TEMPLATE_COMMUNITY_DIR] as $dir) {
+        $isUser = $dir === TEMPLATE_USER_DIR;
+        foreach (glob($dir . '/*.xml') ?: [] as $path) {
+            $dom = pluginXml($path);
+            if ($dom === null) {
+                continue;
+            }
+            $icon = containerIconUrl((string) ($dom->Icon ?? ''));
+            $repo = caAppsRepoKey((string) ($dom->Repository ?? ''));
+            if ($isUser) {
+                addContainerIconCandidate($names, trim((string) ($dom->Name ?? '')), $icon);
+                addContainerIconCandidate($userRepos, $repo, $icon);
+            } else {
+                addContainerIconCandidate($communityRepos, $repo, $icon);
+            }
+        }
+    }
+
+    // CA 的 repo 是模板作者仓库,不是镜像名;只能按应用名归一化精确匹配。
+    $caNames = [];
+    foreach (caAppsReadCache()['records'] ?? [] as $record) {
+        if (!is_array($record) || ($record['type'] ?? '') !== 'docker') {
+            continue;
+        }
+        addContainerIconCandidate(
+            $caNames,
+            caAppsKey((string) ($record['name'] ?? '')),
+            containerIconUrl($record['icon'] ?? null)
+        );
+    }
+    return [
+        'names' => $names,
+        'userRepos' => $userRepos,
+        'communityRepos' => $communityRepos,
+        'caNames' => $caNames,
+        'dashboard' => dashboardIconSet(),
+    ];
+}
+
+/** 全部容器图标;null = Docker 查询失败(调用方保留旧值),空数组 = 当前无容器。 */
+function dockerContainerIcons(): ?array
+{
+    $lines = [];
+    $exitCode = 0;
+    @exec(
+        PATH_ENV . ' ' . DOCKER . ' ps -a --format ' . escapeshellarg('{{.Names}}|{{.Image}}') . ' 2>/dev/null',
+        $lines,
+        $exitCode
+    );
+    if ($exitCode !== 0) {
+        return null;
+    }
+    $ctx = dockerContainerIconContext();
+    $manual = manualContainerIcons();
+    $rows = [];
+    foreach ($lines as $line) {
+        $parts = explode('|', trim($line), 2);
+        if (count($parts) !== 2 || $parts[0] === '') {
+            continue;
+        }
+        [$name, $image] = $parts;
+        $manualIcon = $manual['docker:' . $name] ?? null;
+        $icon = $ctx['names'][$name] ?? null;
+        $repo = caAppsRepoKey($image);
+        foreach (['userRepos', 'communityRepos'] as $source) {
+            if ($icon === null && isset($ctx[$source][$repo])) {
+                $icon = $ctx[$source][$repo];
+            }
+        }
+        $imageName = basename($repo);
+        if ($icon === null) {
+            foreach ([caAppsKey($imageName), caAppsKey($name)] as $key) {
+                if ($icon === null && isset($ctx['caNames'][$key])) {
+                    $icon = $ctx['caNames'][$key];
+                }
+            }
+        }
+        if ($icon === null) {
+            foreach ([containerIconSlug($imageName), containerIconSlug($name)] as $slug) {
+                if ($icon === null && $slug !== '' && isset($ctx['dashboard'][$slug])) {
+                    $icon = DASHBOARD_ICONS_PNG_BASE . rawurlencode($slug) . '.png';
+                }
+            }
+        }
+        $rows[] = ['name' => $name, 'icon' => $manualIcon ?? $icon];
+    }
+    return $rows;
+}
+
+function dockerContainerIconMap(?array $rows): array
+{
+    $map = [];
+    foreach ($rows ?? [] as $row) {
+        if (!is_array($row) || !is_string($row['name'] ?? null) || $row['name'] === '') {
+            continue;
+        }
+        $map[$row['name']] = containerIconReference($row['icon'] ?? null);
+    }
+    return $map;
+}
+
+/** Compose 栈图标:同名成员优先;多成员仅在全部解析且共享一个图标时采用。 */
+function composeStackIcon(string $stackName, array $containers, array $iconMap, array $services = []): ?string
+{
+    $manual = manualContainerIcons()['compose:' . $stackName] ?? null;
+    if ($manual !== null) {
+        return $manual;
+    }
+    $stackKey = caAppsKey($stackName);
+    $distinct = [];
+    $preferred = null;
+    $resolved = 0;
+    $total = 0;
+    foreach ($containers as $name) {
+        if (!is_string($name) || $name === '') {
+            continue;
+        }
+        $total++;
+        $icon = containerIconReference($iconMap[$name] ?? null);
+        if ($icon === null) {
+            continue;
+        }
+        $resolved++;
+        $distinct[$icon] = true;
+        $serviceKey = caAppsKey((string) ($services[$name] ?? ''));
+        if ($preferred === null && $stackKey !== ''
+            && (caAppsKey($name) === $stackKey || ($serviceKey !== '' && $serviceKey === $stackKey))) {
+            $preferred = $icon;
+        }
+    }
+    if ($preferred !== null) {
+        return $preferred;
+    }
+    return $total > 0 && $resolved === $total && count($distinct) === 1
+        ? (string) array_key_first($distinct)
+        : null;
+}
+
+function stackSummary(
+    string $dirName,
+    array $lsMap,
+    array $pcMap = [],
+    array $iconMap = [],
+    array $serviceMap = []
+): array {
     $dir = PROJECTS_DIR . '/' . $dirName;
     $project = projectName($dirName);
     $row = $lsMap[$project] ?? null;
     $status = $row['Status'] ?? null; // 例: "running(1)" / "exited(0)"
+    $containers = $pcMap[$project] ?? [];
     return [
         'name' => $dirName,
         'project' => $project,
@@ -1011,7 +1511,8 @@ function stackSummary(string $dirName, array $lsMap, array $pcMap = []): array
         'lastResult' => readJsonFile($dir . '/last_result.json'),
         'composeFile' => firstExisting($dir, composeFileCandidates()),
         // 【续 70】该栈的容器名列表(label 精确归属,自定义 container_name 也准)
-        'containers' => $pcMap[$project] ?? [],
+        'containers' => $containers,
+        'icon' => composeStackIcon($dirName, $containers, $iconMap, $serviceMap[$project] ?? []),
     ];
 }
 
@@ -2537,17 +3038,25 @@ function caAppsWriteCache(int $cachedAt, array $records): bool
     return true;
 }
 
-/** HTTP 取 feed:cURL 优先(连接/总超时 + 写回调强制大小上限),无 cURL 时流式分块读 */
-function caAppsHttpGet(string $url): array
-{
+/** 只读 HTTP JSON:cURL 优先(连接/总超时 + 写回调强制大小上限),无 cURL 时流式分块读。 */
+function caAppsHttpGet(
+    string $url,
+    int $connectTimeout = CA_APPS_CONNECT_TIMEOUT_SEC,
+    int $totalTimeout = CA_APPS_TOTAL_TIMEOUT_SEC,
+    int $maxBytes = CA_APPS_MAX_BYTES
+): array {
     if (function_exists('curl_init')) {
-        return caAppsCurlGet($url);
+        return caAppsCurlGet($url, $connectTimeout, $totalTimeout, $maxBytes);
     }
-    return caAppsStreamGet($url);
+    return caAppsStreamGet($url, $totalTimeout, $maxBytes);
 }
 
-function caAppsCurlGet(string $url): array
-{
+function caAppsCurlGet(
+    string $url,
+    int $connectTimeout = CA_APPS_CONNECT_TIMEOUT_SEC,
+    int $totalTimeout = CA_APPS_TOTAL_TIMEOUT_SEC,
+    int $maxBytes = CA_APPS_MAX_BYTES
+): array {
     $ch = curl_init();
     if ($ch === false) {
         return ['ok' => false, 'body' => '', 'error' => 'curl 初始化失败'];
@@ -2559,19 +3068,19 @@ function caAppsCurlGet(string $url): array
         CURLOPT_RETURNTRANSFER => false,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS => 3,
-        CURLOPT_CONNECTTIMEOUT => CA_APPS_CONNECT_TIMEOUT_SEC,
-        CURLOPT_TIMEOUT => CA_APPS_TOTAL_TIMEOUT_SEC,
+        CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+        CURLOPT_TIMEOUT => $totalTimeout,
         CURLOPT_USERAGENT => 'unraid-mobile/compose-api',
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
         CURLOPT_ENCODING => '',
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body, &$overflow): int {
+        CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body, &$overflow, $maxBytes): int {
             if ($overflow) {
                 return 0;
             }
             $body .= $chunk;
-            if (strlen($body) > CA_APPS_MAX_BYTES) {
+            if (strlen($body) > $maxBytes) {
                 $overflow = true;
                 return 0;
             }
@@ -2589,7 +3098,7 @@ function caAppsCurlGet(string $url): array
     $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     curl_close($ch);
     if ($overflow) {
-        return ['ok' => false, 'body' => '', 'error' => 'feed 超过大小上限 ' . CA_APPS_MAX_BYTES . ' 字节'];
+        return ['ok' => false, 'body' => '', 'error' => '响应超过大小上限 ' . $maxBytes . ' 字节'];
     }
     if ($result === false) {
         return ['ok' => false, 'body' => '', 'error' => $error !== '' ? $error : ('HTTP 失败 errno=' . $errno)];
@@ -2600,11 +3109,14 @@ function caAppsCurlGet(string $url): array
     return ['ok' => true, 'body' => $body, 'error' => ''];
 }
 
-function caAppsStreamGet(string $url): array
-{
+function caAppsStreamGet(
+    string $url,
+    int $totalTimeout = CA_APPS_TOTAL_TIMEOUT_SEC,
+    int $maxBytes = CA_APPS_MAX_BYTES
+): array {
     $context = stream_context_create([
         'http' => [
-            'timeout' => CA_APPS_TOTAL_TIMEOUT_SEC,
+            'timeout' => $totalTimeout,
             'ignore_errors' => true,
             'header' => "Accept: application/json\r\nUser-Agent: unraid-mobile/compose-api\r\n",
         ],
@@ -2622,9 +3134,9 @@ function caAppsStreamGet(string $url): array
             return ['ok' => false, 'body' => '', 'error' => '读取 feed 失败'];
         }
         $body .= $chunk;
-        if (strlen($body) > CA_APPS_MAX_BYTES) {
+        if (strlen($body) > $maxBytes) {
             fclose($fh);
-            return ['ok' => false, 'body' => '', 'error' => 'feed 超过大小上限 ' . CA_APPS_MAX_BYTES . ' 字节'];
+            return ['ok' => false, 'body' => '', 'error' => '响应超过大小上限 ' . $maxBytes . ' 字节'];
         }
     }
     $meta = stream_get_meta_data($fh);
@@ -4094,6 +4606,18 @@ if ($method === 'GET') {
         ok(readImageUpdates());
     }
 
+    if ($action === 'iconfile') {
+        sendContainerIconFile($_GET['id'] ?? null);
+    }
+
+    if ($action === 'containericons') {
+        $icons = dockerContainerIcons();
+        if ($icons === null) {
+            fail(503, '无法读取 Docker 容器图标');
+        }
+        ok($icons);
+    }
+
     // 【续 118/120】文件搜索(显式触发):scope=cache 只读 /mnt/cache 不唤盘;
     // scope=all 扫 /mnt/user 唤醒休眠盘(前端二次确认),audit 留痕
     if ($action === 'search') {
@@ -4118,8 +4642,10 @@ if ($method === 'GET') {
         }
         sort($names, SORT_NATURAL | SORT_FLAG_CASE);
         $lsMap = composeLsMap();
-        $pcMap = projectContainersMap();
-        ok(array_map(fn($n) => stackSummary($n, $lsMap, $pcMap), $names));
+        $serviceMap = [];
+        $pcMap = projectContainersMap($serviceMap);
+        $iconMap = dockerContainerIconMap(dockerContainerIcons());
+        ok(array_map(fn($n) => stackSummary($n, $lsMap, $pcMap, $iconMap, $serviceMap), $names));
     }
 
     if ($action === 'get') {
@@ -4127,8 +4653,11 @@ if ($method === 'GET') {
         $dir = PROJECTS_DIR . '/' . $name;
         $composeFile = firstExisting($dir, composeFileCandidates());
         $overrideFile = firstExisting($dir, overrideFileCandidates());
+        $serviceMap = [];
+        $pcMap = projectContainersMap($serviceMap);
+        $iconMap = dockerContainerIconMap(dockerContainerIcons());
         ok([
-            'stack' => stackSummary($name, composeLsMap()),
+            'stack' => stackSummary($name, composeLsMap(), $pcMap, $iconMap, $serviceMap),
             'composeYaml' => $composeFile !== null ? (string) file_get_contents($dir . '/' . $composeFile) : '',
             'overrideYaml' => $overrideFile !== null ? (string) file_get_contents($dir . '/' . $overrideFile) : null,
             'lastCmdLog' => tailFile($dir . '/last_cmd.log'),
@@ -4222,6 +4751,10 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
     if ($action === 'dockeredit') {
         $jobId = startDockerEdit($body);
         ok(['jobId' => $jobId, 'async' => true]);
+    }
+
+    if ($action === 'seticon') {
+        ok(setContainerIcon($body));
     }
 
     if ($action === 'autostart') {

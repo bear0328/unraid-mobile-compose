@@ -183,9 +183,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.4.9/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.0/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -222,6 +222,12 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.0(2026-11-21)
+
+- Web 与原生 iOS 的 Docker、Compose 列表和详情统一显示应用图标；自动匹配覆盖用户/社区模板、Community Applications 和 Dashboard Icons，Compose 优先使用同名主容器或主服务图标，避免辅助容器图标错配
+- Web 详情新增手工 HTTPS 图标、本地上传 PNG/JPEG/WebP（最大 2MB）和恢复自动匹配；设置保存在 Unraid 并同步到 App，不修改 Docker 模板或 Compose 文件，也不触发容器重建。上传图片通过 API Key 鉴权读取，公网图片请求不会携带密钥
+- compose-api 已更新，**升级后需重跑安装脚本**。原生版本为 TestFlight 2.0.0(107)
 
 ### v1.4.9(2026-11-20)
 
