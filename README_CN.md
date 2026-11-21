@@ -228,6 +228,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(118)(2026-11-21)
+
+- 剧集列表和播放标题显示季/集序号，如 `S01E03 · 剧集名称`；特别篇支持 `S00`，缺少序号时保留原名称
+- 排序字段与升降序按 Emby 服务器和用户保存，切换目录、页签或重启 App 后自动恢复
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(117)(2026-11-21)
 
 - Emby 服务器编辑页底部新增常驻红色「删除服务器」按钮，不再只依赖列表左滑；点击后需二次确认，只删除 App 内配置与本机 API Key，不影响 Emby 服务端

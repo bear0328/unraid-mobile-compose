@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (118) (2026-11-21)
+
+- Episode lists and playback titles now include season and episode numbers, such as `S01E03 · Episode Name`; specials support `S00`, while items without numbers keep their original names
+- Sort field and direction are saved per Emby server and user, then restored after changing folders or tabs and after relaunching the app
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (117) (2026-11-21)
 
 - Added a persistent red "Delete Server" button at the bottom of each Emby server edit page, so deletion no longer depends on a list swipe. Confirmation is still required; only local settings and the API key are removed, leaving the Emby server untouched

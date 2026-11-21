@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (118)] - 2026-11-21
+
+### Fixed
+
+- Episode lists and playback titles now display season and episode numbers from `ParentIndexNumber / IndexNumber`, such as `S01E03 · Episode Name`; specials support `S00`, while missing numbers fall back to the original name
+- Sort field and direction are no longer temporary view state. They persist independently per Emby server and user, then restore after changing folders or tabs and after relaunching the app
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (117)] - 2026-11-21
 
 ### Fixed

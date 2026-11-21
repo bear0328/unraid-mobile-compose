@@ -2,6 +2,17 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (118)] - 2026-11-21
+
+### 修复
+
+- 剧集列表和播放标题显示 `ParentIndexNumber / IndexNumber` 对应的季/集序号，如 `S01E03 · 剧集名称`；特别篇支持 `S00`，缺少序号时保留原名称
+- 排序字段和升降序不再只保存在页面临时状态中，而是按 Emby 服务器与用户持久化，切换目录、页签或重启 App 后自动恢复且互不覆盖
+
+### 变更
+
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (117)] - 2026-11-21
 
 ### 修复
