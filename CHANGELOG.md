@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (119)] - 2026-11-21
+
+### Fixed
+
+- Sort field and direction now persist independently per Emby server, user and directory. Libraries, series and seasons no longer overwrite one another, and each directory restores its own choice after navigation or app relaunch
+- Series and season directories now default to ascending `IndexNumber`, preventing title sorting from scrambling episode order. The menu labels these options as season or episode number, while name, date added, premiere date and rating remain available per directory
+- The global preference from build 118 is used only as a compatibility fallback for library roots, not for series or season directories
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (118)] - 2026-11-21
 
 ### Fixed

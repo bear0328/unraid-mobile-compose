@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (119) (2026-11-21)
+
+- Sort field and direction are saved independently per Emby server, user and directory, so libraries, series and seasons no longer overwrite one another and each choice survives navigation and relaunch
+- Series and season directories default to ascending season/episode number rather than title order; other sort choices remain available and are remembered per directory
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (118) (2026-11-21)
 
 - Episode lists and playback titles now include season and episode numbers, such as `S01E03 · Episode Name`; specials support `S00`, while items without numbers keep their original names
