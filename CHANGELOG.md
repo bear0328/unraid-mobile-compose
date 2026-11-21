@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (116)] - 2026-11-21
+
+### Added
+
+- Added multiple Emby servers with multiple users per server. Settings manages servers, independent API keys and default users, while the Player toolbar switches users grouped by server
+- Switching reloads the selected library and remembers the last user for each server. Directories, artwork, pagination and playback reports all retain the same server and user context
+
+### Security
+
+- Each server's API key is stored separately in the device keychain, and removing a server clears only its own credential. Existing single-server settings and credentials migrate automatically with failure fallback
+
+### Fixed
+
+- Local resume entries are isolated by stable server and user identities while remaining compatible with pre-upgrade records. Late responses cannot replace the current library after rapid switching, and completed playback clears both new and legacy resume keys
+- Changing a server URL or API key requires user validation again. A changed remote Emby Server ID rebuilds local user identities to prevent resume mismatches
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (115)] - 2026-11-21
 
 ### Changed

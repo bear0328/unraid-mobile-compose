@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (116) (2026-11-21)
+
+- Added multiple Emby servers with multiple users per server. Add, edit and remove servers in Settings, then switch users by server from the Player toolbar while preserving each server's last selection
+- API keys are stored separately in the device keychain. Libraries, artwork and playback progress are isolated by server and user, and late responses from a previous selection cannot replace the current library
+- Existing single-server settings, keychain credentials and local resume entries migrate automatically. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (115) (2026-11-21)
 
 - Promoted the Emby library to a dedicated Player tab and removed the duplicate Emby entry from Shares. Emby server configuration remains in Settings
