@@ -228,6 +228,11 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(117)(2026-11-21)
+
+- Emby 服务器编辑页底部新增常驻红色「删除服务器」按钮，不再只依赖列表左滑；点击后需二次确认，只删除 App 内配置与本机 API Key，不影响 Emby 服务端
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(116)(2026-11-21)
 
 - Emby 播放器支持多服务器与每服务器多用户：设置中可添加、编辑和删除服务器，播放器顶部菜单可按服务器分组切换用户并记住上次选择

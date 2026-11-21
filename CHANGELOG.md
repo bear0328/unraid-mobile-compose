@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (117)] - 2026-11-21
+
+### Fixed
+
+- Added a persistent red "Delete Server" button to each Emby server edit page because the list swipe action was unreliable on device. Confirmation removes only the local URL, user selection and API key, leaving the Emby server untouched
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (116)] - 2026-11-21
 
 ### Added

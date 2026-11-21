@@ -2,6 +2,16 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (117)] - 2026-11-21
+
+### 修复
+
+- Emby 服务器编辑页底部新增常驻红色「删除服务器」按钮，避免列表左滑入口在真机上不可靠；二次确认后仅删除 App 内地址、用户选择与本机 API Key，不影响 Emby 服务端
+
+### 变更
+
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (116)] - 2026-11-21
 
 ### 新增
