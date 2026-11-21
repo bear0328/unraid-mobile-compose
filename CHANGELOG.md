@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (115)] - 2026-11-21
+
+### Changed
+
+- Promoted the Emby library to a dedicated Player tab in the bottom navigation and removed the duplicate Emby entry from Shares. Emby server configuration remains available in Settings
+- Moved System Logs into Settings → Logs alongside Log Password. Notification details still open logs with their filter applied, while filtering, auto-refresh, line limits and export remain unchanged
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (114)] - 2026-11-21
 
 ### Fixed

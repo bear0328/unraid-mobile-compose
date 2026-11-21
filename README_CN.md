@@ -228,6 +228,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(115)(2026-11-21)
+
+- Emby 媒体库升级为底部独立「播放器」页签，共享页移除重复 Emby 入口；Emby 服务器仍可在设置中配置
+- 系统日志迁入「设置 → 日志」，通知详情保留过滤条件直达；筛选、自动刷新、行数档和导出功能不变
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(114)(2026-11-21)
 
 - 修复 Emby 远程 STRM 电影和剧集黑屏：远程 HTTP 媒体改由 VLCKit 直接播放并携带 User-Agent，避免 Emby 代理上游时只返回错误文本；本地文件仍使用 Emby 直链

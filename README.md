@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (115) (2026-11-21)
+
+- Promoted the Emby library to a dedicated Player tab and removed the duplicate Emby entry from Shares. Emby server configuration remains in Settings
+- Moved System Logs into Settings → Logs. Notification details still open logs with their filter applied, and existing filtering, auto-refresh, line limits and export are preserved
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (114) (2026-11-21)
 
 - Fixed black screens for remote Emby STRM movies and episodes. VLCKit now plays remote HTTP media directly with its User-Agent instead of receiving an upstream error through Emby's proxy; local files still use Emby streams
