@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (109)] - 2026-11-21
+
+### Added
+
+- The player controls now show a compact media summary above the lower-left progress area: video resolution, codec and frame rate, plus the current audio track's codec, channels, language and nominal bitrate. Missing fields are omitted, audio changes update the summary, and input/Demux aggregate bitrate is never presented as audio bitrate
+- Added playback-control locking with two-step unlocking. Locking hides and blocks progress, playback, settings and close controls; tapping the video reveals only an unlock button, which hides again after five seconds of inactivity
+
+### Changed
+
+- The media summary uses a lightweight cache populated after playback starts and refreshed only when tracks change, rather than parsing on every progress update. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (108)] - 2026-11-21
 
 ### Added

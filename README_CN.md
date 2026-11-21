@@ -1,4 +1,4 @@
-# unRAID Mobile — Docker Compose 部署
+# unRAID Mobile
 
 **[English](README.md)** | 简体中文
 
@@ -7,13 +7,9 @@
 [![Docker 镜像版本](https://img.shields.io/docker/v/bear0328/unraid-mobile?sort=semver&label=docker)](https://hub.docker.com/r/bear0328/unraid-mobile)
 [![Docker Pulls](https://img.shields.io/docker/pulls/bear0328/unraid-mobile)](https://hub.docker.com/r/bear0328/unraid-mobile)
 
-专为移动设备优化的 unRAID 服务器管理界面,以单 Docker 镜像分发
-([`bear0328/unraid-mobile`](https://hub.docker.com/r/bear0328/unraid-mobile))。
-数据走 unRAID GraphQL API(7.2+;磁盘休眠图标和网络速率统计需要 unRAID 7.3+ /
-unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正常)。
-
-> **本仓库只放部署资产**——docker-compose 文件、unRAID Docker UI 模板、可选的宿主后端
-> (compose-api)。应用本体已转为**闭源**,以 Docker Hub 镜像分发,这里不需要构建任何东西。
+专为移动设备优化的 unRAID 服务器管理界面。React 18 + TypeScript + Vite + Tailwind CSS,
+单容器部署,数据走 unRAID GraphQL API(7.2+;磁盘休眠图标和网络速率统计需要
+unRAID 7.3+ / unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,其余功能正常)。
 
 ## 界面截图
 
@@ -147,11 +143,9 @@ Compose、`docker run` 和 Docker UI 模板都只负责应用容器，不会自�
 Compose、插件管理和 CPU 温度(均为 Pro 功能)依赖一个宿主端小组件(`api.php`,经宿主 php-fpm
 以 root 执行 `docker compose` / 官方 `plugin` CLI / 直读 `/sys/class/hwmon`)。
 未安装时对应功能显示安装指引或占位,**其余功能不受影响**。
-宿主后端源码完整公开在 [`compose-api/`](compose-api/),以 root 跑在你服务器上的东西,
-每一行都可以自行审计。
 
 Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `.plg` 插件安装及官方 Docker 模板安装。
-插件任务在宿主后台串行执行并保留日志。插件作者提供的脚本会以 root 运行;只安装可信来源,
+所有插件任务在宿主后台串行执行并保留日志。插件作者提供的脚本会以 root 运行;只安装可信来源,
 卸载及配置清理由插件自身定义。Unraid OS 更新不在此功能范围内。
 
 > ⚠️ **风险说明(安装前必读)**
@@ -199,6 +193,17 @@ bootstrap 默认通过 `http://127.0.0.1/graphql` 校验 API key；如本机 Gra
 Compose 已默认挂载 php-fpm.sock；使用 `docker run` 或自定义模板时需自行添加该挂载并重建容器，
 Compose tab 与 CPU 温度(Pro 激活后)即可用。
 
+## 从源码构建
+
+```bash
+git clone https://github.com/bear0328/unraid-mobile.git
+cd unraid-mobile
+npm ci
+npm run build        # 产物在 dist/
+npm test             # vitest
+docker build -t unraid-mobile .
+```
+
 ## unRAID GraphQL API 限制说明
 
 ### Docker 容器
@@ -222,6 +227,12 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(109)(2026-11-21)
+
+- 播放器控制栏左下角新增简易媒体信息，展示分辨率、视频编码、帧率和当前音轨的编码、声道、语言及标称码率；缺失字段自动省略，切换音轨后同步更新
+- 新增播放控制锁定：锁定后屏蔽进度、播放、设置和关闭等触控，轻点画面仅唤出解锁按钮，5 秒无操作自动隐藏
+- 媒体摘要起播后缓存、轨道变化时更新，不随进度高频解析；仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
 
 ### TestFlight 2.0.0(108)(2026-11-21)
 
@@ -400,7 +411,6 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 
 - iOS 原生壳三连修复(TestFlight 实测发现,web/PWA 同源下全部潜伏):① /graphql 代理响应叠出双 ACAO 头(上游 unraid-api 自带 CORS 反射 Origin + nginx add_header),浏览器按规范拒读,表现为「unraid API 不可达」而服务端日志全 200——剥上游头,nginx 单侧出头;② /config/ 的 limit_except 内 auth_basic 抢跑把跨域预检拒成 403,原生壳下设备计数/激活留痕/settings 写回全部静默失败——改 map 变量 realm,GET/OPTIONS 免鉴权;③ 共享页 baseUrl 剥端口(web 同源遗留),原生下被 webview 当相对路径打到 capacitor://localhost——原生分支统一走 apiBase()。license 机制补账:签发登记簿(gen-license 每次签发自动登记,含完整 key 串,本地留存)+ 激活留痕(哪把 key 激活在哪台设备,服务器侧可查);apiBase 读不到服务器列表时回退 legacy 配置(全新装保存即备份不再 load failed)。纯前端版本,compose-api 与 v1.3.0~v1.3.4 相同
 
-
 ### v1.3.4(2026-10-03)
 
 - iOS 原生壳(TestFlight)适配:补声明本地网络权限(iOS 对未声明的 app 静默拦截局域网请求,表现为服务器不可达);nginx CORS 全链路补齐——新增 /healthz 端点、各 API/DAV 端点 OPTIONS 预检补全 Allow-Methods/Headers(DAV 含 Range/If-Range 断点续传头)、鉴权失败 403 响应也带 CORS 头(此前跨域下连「密码错误」提示都显示不出);原生壳下载「保存」改走 Capacitor 插件写盘 + 系统分享面板(WKWebView 网页分享 API 对文件支持不全)。纯前端版本,compose-api 与 v1.3.0~v1.3.3 相同
@@ -491,21 +501,17 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 **Q: 换手机/浏览器后要重输 API 密钥?**
 是。apiKey 只存浏览器 localStorage,不跟设备走;服务器端不落任何凭证。
 
-**Q: 应用源码在哪?**
-应用本体已闭源(原公开源码仓库已转为私有)。本仓库包含部署与审计所需的一切:
-compose 文件、Docker UI 模板,以及宿主后端的完整源码——唯一在你服务器上
-以容器外身份运行的组件。
-
 ## License 与商业化
 
-- **应用本体**(Docker 镜像 `bear0328/unraid-mobile`)闭源,保留所有权利;
-  个人/家庭自托管免费使用。
-- [`compose-api/`](compose-api/) 下的**宿主后端**源码为便于审计而公开,以
-  **Business Source License 1.1(BSL)** 授权(见 [LICENSE](LICENSE)):
-  个人使用与修改自由;**禁止转售、禁止做成收费/托管服务提供给第三方**。
+本仓库代码以 **Business Source License 1.1(BSL)** 授权(见 [LICENSE](LICENSE)):
 
-商业化形式:**Pro 功能通过 license key 解锁**(设置页输入即可,买断制)。
+- ✅ 个人/家庭自托管:随意用、随意改、随意自建(不限服务器台数)
+- ✅ 每个版本发布满 4 年后,该版本自动转为 MIT 完全自由许可
+- ❌ 禁止转售、禁止把本软件做成收费/托管服务提供给第三方
+
+商业化形式:代码全部公开,**Pro 功能通过 license key 解锁**(设置页输入即可,买断制)。
 **1 枚 key 绑定 1 台 unRAID 服务器**(按 U 盘 flashGuid 校验;客户 key 首次激活时自动绑定,
 重装系统不影响;更换 U 盘后联系重签),**最多可在 3 台设备**(手机/浏览器)上激活,
 旧设备「解除绑定」即释放名额。旧格式 key 已停用;新 autoBind key 仅首次绑定需联网并上传哈希。
+License 的技术性质是"防君子不防高手"——真正的商用保护由 BSL 许可证兜底。
 如果你喜欢这个项目,购买 Pro 是对开发最直接的支持。

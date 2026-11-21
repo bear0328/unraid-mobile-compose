@@ -1,4 +1,4 @@
-# unRAID Mobile — Docker Compose 部署
+# unRAID Mobile
 
 **English** | [简体中文](README_CN.md)
 
@@ -7,14 +7,10 @@
 [![Docker Image Version](https://img.shields.io/docker/v/bear0328/unraid-mobile?sort=semver&label=docker)](https://hub.docker.com/r/bear0328/unraid-mobile)
 [![Docker Pulls](https://img.shields.io/docker/pulls/bear0328/unraid-mobile)](https://hub.docker.com/r/bear0328/unraid-mobile)
 
-A mobile-optimized management interface for unRAID servers, distributed as a single Docker image
-([`bear0328/unraid-mobile`](https://hub.docker.com/r/bear0328/unraid-mobile)). Data via the unRAID
-GraphQL API (7.2+; disk sleep badges and network rate stats require unRAID 7.3+ / unraid-api ≥
-4.20 — on older versions the app detects the missing schema fields and degrades gracefully).
-
-> **This repository contains deployment assets only** — the docker-compose file, the unRAID Docker
-> UI template, and the optional host agent (compose-api). The app itself is **closed-source** and
-> ships as a Docker Hub image; there is nothing to build here.
+A mobile-optimized management interface for unRAID servers. React 18 + TypeScript + Vite + Tailwind CSS,
+single-container deployment, data via the unRAID GraphQL API (7.2+; disk sleep badges and
+network rate stats require unRAID 7.3+ / unraid-api ≥ 4.20 — on older versions the app
+detects the missing schema fields and degrades gracefully).
 
 ## Screenshots
 
@@ -30,7 +26,7 @@ GraphQL API (7.2+; disk sleep badges and network rate stats require unRAID 7.3+ 
 
 | Free (works out of the box) | Pro (unlocked with a license key) |
 |------|------|
-| Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (CPU/memory/disks/network/passthrough/snapshots, read from libvirt XML) |
+| Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (static libvirt configuration, per-VM live CPU/memory/disk/network metrics, and QEMU/libvirt logs) |
 | Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹, **plugin management** (check/install/update/remove, native app)¹ |
 | Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
 | Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, alert notifications (Webhook), disk cleanup |
@@ -161,8 +157,6 @@ Compose, plugin management, and CPU temperature (all Pro features) rely on a sma
 (`api.php`, executed as root via the host's php-fpm to run `docker compose`, the official `plugin` CLI,
 or read `/sys/class/hwmon` directly).
 Without it, those features show an install guide or a placeholder; **everything else is unaffected**.
-The host agent source is published in [`compose-api/`](compose-api/) so you can audit exactly
-what runs on your server as root.
 
 Web and native support Community Applications search, categories, details, HTTPS `.plg` plugin
 installation, and official Docker template installation. Plugin jobs run serially in the host background
@@ -228,6 +222,17 @@ that mode a missing Compose Manager Plus causes a clear error instead of a netwo
 Compose already mounts php-fpm.sock. With `docker run` or a custom template, add that mount and recreate
 the container; the Compose tab and CPU temperature (once Pro is activated) are then ready.
 
+## Build from source
+
+```bash
+git clone https://github.com/bear0328/unraid-mobile.git
+cd unraid-mobile
+npm ci
+npm run build        # output in dist/
+npm test             # vitest
+docker build -t unraid-mobile .
+```
+
 ## unRAID GraphQL API limitations
 
 ### Docker containers
@@ -238,7 +243,7 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 | Stats | ✅ | stats { cpuPercent, memUsage, memPercent } (subscription) |
 | Start/stop | ✅ | mutation |
 | Standalone container parameter editing | ✅ (Pro) | Native iOS; compose-api edits the Unraid user template and recreates through official `xmlToCommand` |
-| Port mappings / mounts / network / disk usage | ✅ | ports / mounts / network / size* (details query) |
+| Port mappings / mounts / network / disk usage | ✅ | ports / mounts / networkSettings / size* (details query) |
 
 ### Virtual machines
 | Feature | Supported | Fields |
@@ -251,6 +256,12 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (109) (2026-11-21)
+
+- The player controls now include a compact lower-left media summary with video resolution, codec and frame rate, plus the current audio track's codec, channels, language and nominal bitrate. Missing fields are omitted and audio-track changes update the summary
+- Added playback-control locking: progress, playback, settings and close controls are blocked while locked. Tapping the video reveals only an unlock button, which hides again after five seconds of inactivity
+- The summary is cached after playback starts and refreshed only on track changes rather than on every progress update. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
 
 ### TestFlight 2.0.0 (108) (2026-11-21)
 
@@ -429,7 +440,6 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 - iOS native shell triple fix (all found via TestFlight on-device testing; all latent under same-origin web/PWA): (1) the /graphql proxy response carried duplicate Access-Control-Allow-Origin headers (upstream unraid-api reflects the Origin, nginx added its own) — browsers reject multi-value ACAO per spec, surfacing as "unRAID API unreachable" while server logs showed all 200s; upstream CORS headers are now stripped so nginx is the single source. (2) auth_basic inside limit_except in the /config/ location ran ahead of the OPTIONS short-circuit and rejected cross-origin preflights with 403, silently breaking device counting, activation trails and settings write-back on the native shell — replaced with a map-driven variable realm (GET/OPTIONS exempt). (3) the Shares page stripped the port from baseUrl (a same-origin-era leftover), so the native webview resolved it as a relative path against capacitor://localhost — the native branch now uses apiBase(). License bookkeeping: an issuance registry (gen-license auto-logs every signed key, full string kept locally) and an activation trail (which key was activated on which device, queryable server-side); apiBase now falls back to the legacy config when the server list is empty (fresh installs can back up right after saving). Frontend-only release; compose-api is identical to v1.3.0–v1.3.4
 
-
 ### v1.3.4 (2026-10-03)
 
 - iOS native shell (TestFlight) support: adds the Local Network permission declaration (iOS silently blocks LAN requests without it, surfacing as "server unreachable"); full-chain nginx CORS fixes — new /healthz endpoint, OPTIONS preflights now return complete Allow-Methods/Headers (DAV includes Range/If-Range for resumable downloads), and auth-failure 403 responses carry CORS headers too (previously even the "wrong password" hint was unreadable cross-origin); the native Save button now writes via the Capacitor Filesystem plugin and opens the system share sheet (WKWebView's Web Share API has incomplete file support). Frontend-only release; compose-api is identical to v1.3.0–v1.3.3
@@ -525,24 +535,20 @@ has no such config (e.g. host networking has no port mappings).
 Yes. The API key lives only in the browser's localStorage and does not travel between devices;
 no credentials are stored server-side.
 
-**Q: Where is the app source code?**
-The app is closed-source (the former public source repository has been made private). This repo
-carries everything needed to deploy and audit it: the compose file, the Docker UI template, and
-the full source of the host agent — the only component that runs on your server outside the
-container.
+## License & commercial model
 
-## License
+This repository is licensed under the **Business Source License 1.1 (BSL)** (see [LICENSE](LICENSE)):
 
-- The **app** (Docker image `bear0328/unraid-mobile`) is closed-source, all rights reserved;
-  personal/home self-hosting use is free.
-- The **host agent** under [`compose-api/`](compose-api/) is published for audit/transparency under
-  the **Business Source License 1.1** (see [LICENSE](LICENSE)): personal use and modification are
-  free; **no resale, no offering it as a paid/hosted service to third parties**.
+- ✅ Personal/home self-hosting: use, modify, and self-build freely (any number of servers)
+- ✅ Four years after each version's release, that version converts to the fully free MIT license
+- ❌ No resale; no offering this software as a paid/hosted service to third parties
 
-Commercial model: **Pro features are unlocked with a license key** (enter it in Settings; one-time
-purchase). **One key is bound to one unRAID server** (verified against the USB flash GUID; new customer
-keys bind automatically on first activation — OS reinstalls don't affect it; if you replace the USB drive,
-contact us for a reissue) **and can be activated on up to 3 devices** (phones/browsers); "Unbind" on an
-old device releases its slot. Legacy keys were retired on 2026-11-18 and must be reissued; autoBind keys
-require network access for binding and send hashes, not raw values. If you like this project, buying Pro
-is the most direct way to support its development.
+Commercial model: all code is public, **Pro features are unlocked with a license key**
+(enter it in Settings; one-time purchase). **One key is bound to one unRAID server** (verified
+against the USB flash GUID; new customer keys bind automatically on first activation — OS reinstalls
+don't affect it; if you replace the USB drive, contact us for a reissue) **and can be activated on up
+to 3 devices** (phones/browsers); "Unbind" on an old device releases its slot. Legacy keys were
+retired on 2026-11-18 and must be reissued; autoBind keys require network access for binding and
+send hashes, not raw values.
+License enforcement is "honesty-based" by nature — real commercial protection comes from the BSL
+license. If you like this project, buying Pro is the most direct way to support its development.
