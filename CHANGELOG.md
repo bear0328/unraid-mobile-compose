@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (114)] - 2026-11-21
+
+### Fixed
+
+- Fixed black screens for remote Emby STRM movies and episodes. Emby's proxy could return a 70-byte JSON error when the upstream required a User-Agent. Remote HTTP media now plays directly through VLCKit with redirect resolution, while local File media continues to use Emby streams
+
+### Added
+
+- Added name, date added, premiere date and community rating sorting with ascending/descending order to Emby directories, using server-side sorting and preserving the selection across pagination
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (113)] - 2026-11-21
 
 ### Added

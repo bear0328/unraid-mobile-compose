@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (114) (2026-11-21)
+
+- Fixed black screens for remote Emby STRM movies and episodes. VLCKit now plays remote HTTP media directly with its User-Agent instead of receiving an upstream error through Emby's proxy; local files still use Emby streams
+- Added name, date added, premiere date and community rating sorting with ascending/descending order to Emby directories. Pagination retains the selected sorting
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (113) (2026-11-21)
 
 - Added a native Emby player: configure the server URL, API key and library user in Settings, then open Emby from the Shares toolbar menu. The API key is stored only in the device keychain

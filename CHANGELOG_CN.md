@@ -2,6 +2,20 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (114)] - 2026-11-21
+
+### 修复
+
+- 修复 Emby 远程 STRM 电影和剧集黑屏：Emby 代理上游时缺少 User-Agent 会返回 70 字节 JSON 错误，现远程 HTTP 媒体直接交给 VLCKit 播放并解析重定向；本地 File 媒体仍走 Emby 直链
+
+### 新增
+
+- Emby 目录新增名称、添加日期、上映日期、评分及升降序排序，使用服务端排序并在分页加载时保持相同条件
+
+### 变更
+
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (113)] - 2026-11-21
 
 ### 新增
