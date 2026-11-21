@@ -228,6 +228,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(113)(2026-11-21)
+
+- 新增原生 Emby 播放器：在设置中配置服务器地址、API Key 与媒体库用户，从共享页顶部菜单进入 Emby；API Key 仅保存在本机钥匙串
+- 支持媒体库与剧集目录分页浏览、海报、原始流 Direct Play，复用 VLCKit 音轨、字幕、倍速、全屏和锁定控制；读取 Emby 续播位置并回传播放进度
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本；当前不包含 Emby 服务端转码
+
 ### TestFlight 2.0.0(112)(2026-11-21)
 
 - 容器与共享页恢复系统标准的左侧大标题，分类切换改为顶部独立下拉按钮，修复 111 中标题位置异常和标题菜单无法点击的问题；容器 / Compose 栈 / 虚拟机及共享 / 硬盘切换均已实际点击验证

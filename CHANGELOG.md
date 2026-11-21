@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (113)] - 2026-11-21
+
+### Added
+
+- Added a native Emby player with server validation, API-key authentication and Emby user selection in Settings, plus direct library access from the Shares toolbar menu
+- Browse libraries, movie folders and series/seasons/episodes with pagination and artwork. Original-stream Direct Play reuses the existing VLCKit audio, subtitle, rate, fullscreen and lock controls
+- Load resume positions from Emby or the device and report playback start, progress and stop events to Emby
+
+### Security
+
+- Emby API keys are stored only in the device keychain and are excluded from configuration backups and project files
+
+### Changed
+
+- Emby server-side transcoding is not included. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (112)] - 2026-11-21
 
 ### Fixed

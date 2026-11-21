@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (113) (2026-11-21)
+
+- Added a native Emby player: configure the server URL, API key and library user in Settings, then open Emby from the Shares toolbar menu. The API key is stored only in the device keychain
+- Browse libraries and series folders with pagination and artwork, play original streams through Direct Play, and reuse the existing VLCKit audio, subtitle, rate, fullscreen and lock controls. Emby resume positions are loaded and playback progress is reported back
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed. Emby server-side transcoding is not included in this release
+
 ### TestFlight 2.0.0 (112) (2026-11-21)
 
 - Restored standard left-aligned large titles in Containers and Shares, with dedicated toolbar dropdown buttons for reliable switching between Containers / Compose / VMs and Shares / Disks. Fixes the misplaced title and unresponsive title menu in build 111
