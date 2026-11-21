@@ -257,6 +257,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (111) (2026-11-21)
+
+- Replaced the persistent segmented controls in Containers and Shares with navigation-title menus, reclaiming vertical space for lists and search. Containers switches between Containers / Compose / VMs, while Shares switches between Shares / Disks
+- Added a visible dropdown indicator and preserved search, sorting, refresh, batch actions, and existing navigation. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (110) (2026-11-21)
 
 - Added the current video track's nominal bitrate to the compact player summary. Missing track values are omitted rather than replaced with input or Demux aggregate bitrate
