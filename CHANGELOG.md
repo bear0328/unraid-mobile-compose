@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (108)] - 2026-11-21
+
+### Added
+
+- The native player controls now include media details showing video codec, profile/level, nominal bitrate, resolution, frame rate, audio/subtitle tracks, metadata, and live playback statistics, with the selected tracks highlighted
+- The details panel supports half/full-screen presentation and moves into the playback settings menu on narrow screens. Statistics are read only while the panel is visible, and stale data is cleared on source changes or stop
+
+### Changed
+
+- Upgraded MobileVLCKit from 3.7.3 to the official stable 3.7.5 release with upstream security and crash fixes
+- VLCKit 4.0's Dolby Vision Profile 5 support is not included, so MKV P5 color issues remain pending future playback-engine support. Web, Docker, and compose-api are unchanged
+
 ## [1.5.1] - 2026-11-21
 
 ### Fixed

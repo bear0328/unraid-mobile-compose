@@ -223,6 +223,12 @@ Compose tab 与 CPU 温度(Pro 激活后)即可用。
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(108)(2026-11-21)
+
+- 原生播放器新增媒体详情，展示视频编码、分辨率、帧率、标称码率、音轨、字幕轨和实时播放统计；详情面板支持半屏/全屏，窄屏自动收进播放设置菜单
+- MobileVLCKit 升级至 3.7.5，包含上游安全与崩溃修复；不包含 4.0 的 Dolby Vision Profile 5 支持，MKV P5 偏色仍需等待后续播放内核支持
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### v1.5.1(2026-11-21)
 
 - 修复用户 Docker 模板中 `file://` 本地图标被忽略的问题，Unraid Mobile 等容器及对应 Compose 栈可正常显示已有图标

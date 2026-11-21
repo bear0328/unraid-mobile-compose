@@ -252,6 +252,12 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (108) (2026-11-21)
+
+- The native player adds media details with video codec, resolution, frame rate, nominal bitrate, audio/subtitle tracks, and live playback statistics. The details panel supports half/full-screen presentation and moves into the playback settings menu on narrow screens
+- MobileVLCKit is upgraded to 3.7.5 with upstream security and crash fixes. This does not include 4.0's Dolby Vision Profile 5 support, so MKV P5 color issues remain pending future playback-engine support
+- Native app only; Web, Docker, and compose-api are unchanged, with no install-script rerun needed
+
 ### v1.5.1 (2026-11-21)
 
 - Fixed automatic matching ignoring `file://` local icons in user Docker templates, allowing Unraid Mobile and other containers and their Compose stacks to show existing icons
