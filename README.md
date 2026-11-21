@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (112) (2026-11-21)
+
+- Restored standard left-aligned large titles in Containers and Shares, with dedicated toolbar dropdown buttons for reliable switching between Containers / Compose / VMs and Shares / Disks. Fixes the misplaced title and unresponsive title menu in build 111
+- Logs now places Refresh in the toolbar and Auto refresh / Jump to top / Alerts in an adjacent options menu, removing the persistent control row while preserving filtering, line limits, export, and alert banners
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (111) (2026-11-21)
 
 - Replaced the persistent segmented controls in Containers and Shares with navigation-title menus, reclaiming vertical space for lists and search. Containers switches between Containers / Compose / VMs, while Shares switches between Shares / Disks

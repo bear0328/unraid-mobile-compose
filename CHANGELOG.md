@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (112)] - 2026-11-21
+
+### Fixed
+
+- Restored standard left-aligned large titles in Containers and Shares and replaced the unreliable title hit area with dedicated toolbar dropdown buttons. Switching between Containers / Compose / VMs and Shares / Disks is verified through UI interaction tests
+
+### Changed
+
+- Logs now places Refresh in the toolbar and Auto refresh / Jump to top / Alerts in an adjacent options menu, removing the persistent horizontal control row. Filtering, source and size information, line limits, export, and alert banners are preserved
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (111)] - 2026-11-21
 
 ### Changed
