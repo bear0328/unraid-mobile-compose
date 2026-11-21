@@ -228,6 +228,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(110)(2026-11-21)
+
+- 播放控制栏的视频简易信息新增当前视频轨标称码率，片源未提供时省略，不使用输入或 Demux 总码率代替
+- 编码名称简化显示：H.264 不再显示为 `H264 - MPEG-4 AVC (PART 10)`，AAC 不再显示为 `MPEG AAC AUDIO`
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(109)(2026-11-21)
 
 - 播放器控制栏左下角新增简易媒体信息，展示分辨率、视频编码、帧率和当前音轨的编码、声道、语言及标称码率；缺失字段自动省略，切换音轨后同步更新

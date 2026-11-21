@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (110) (2026-11-21)
+
+- Added the current video track's nominal bitrate to the compact player summary. Missing track values are omitted rather than replaced with input or Demux aggregate bitrate
+- Simplified codec labels: H.264 no longer appears as `H264 - MPEG-4 AVC (PART 10)`, and AAC no longer appears as `MPEG AAC AUDIO`
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (109) (2026-11-21)
 
 - The player controls now include a compact lower-left media summary with video resolution, codec and frame rate, plus the current audio track's codec, channels, language and nominal bitrate. Missing fields are omitted and audio-track changes update the summary

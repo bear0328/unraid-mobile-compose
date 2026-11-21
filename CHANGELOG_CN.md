@@ -2,6 +2,14 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (110)] - 2026-11-21
+
+### 修复
+
+- 播放控制栏的视频摘要新增当前视频轨标称码率；仅使用轨道明确提供的值，缺失时省略，不使用输入或 Demux 总码率代替
+- 将 VLCKit 的完整编码描述简化为易读名称，例如 `H264 - MPEG-4 AVC (PART 10)` 显示为 H.264、`MPEG AAC AUDIO` 显示为 AAC
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (109)] - 2026-11-21
 
 ### 新增

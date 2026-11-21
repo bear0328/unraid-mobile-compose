@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (110)] - 2026-11-21
+
+### Fixed
+
+- Added the current video track's nominal bitrate to the player control summary. Only an explicitly supplied track value is shown; missing values are omitted rather than replaced with input or Demux aggregate bitrate
+- Shortened VLCKit's verbose codec descriptions for readability, for example `H264 - MPEG-4 AVC (PART 10)` now appears as H.264 and `MPEG AAC AUDIO` as AAC
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (109)] - 2026-11-21
 
 ### Added
