@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (125)] - 2026-11-22
+
+### Fixed
+
+- Targeted devices where build 124 still froze on the target frame after MPEG-TS seeks while audio continued. Affected streams can have large PTS/DTS reordering gaps that make VLC repeatedly discard decoded frames as late; the TS avformat software-decode path now allows late video frames instead of dropping them
+- Kept the player and canvas restart behavior from build 124 for TS seeks. MP4, MKV and other containers retain their existing output and in-place seek behavior
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (124)] - 2026-11-22
 
 ### Fixed
