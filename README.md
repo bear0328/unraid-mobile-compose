@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (127) (2026-11-22)
+
+- Fixed Emby episode resume choices being hidden by a local zero-position entry. Valid server positions now offer Resume / Start from Beginning, while valid local resume entries retain priority
+- Playback reporting waits for the resume choice so an initial zero position cannot clear the server record. Progress is synchronized during playback, seeking, pausing and closing, and the media list refreshes after playback
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (126) (2026-11-22)
 
 - Added local compose-api License signature verification and a machine-bound receipt. The full key goes only to the user's own Unraid host agent, while the central service still receives SHA-256 hashes only. First activation still requires central online binding; local synchronization failure does not block other Pro features

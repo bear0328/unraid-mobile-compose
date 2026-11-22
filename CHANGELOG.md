@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (127)] - 2026-11-22
+
+### Fixed
+
+- Emby episode resume choices are no longer hidden by a local zero-position entry. Valid local positions retain priority, otherwise the server's PlaybackPositionTicks provides Resume / Start from Beginning
+- Playback reporting waits until the resume choice is dismissed, preventing an initial zero position from clearing the server record. Progress is reported during playback, seeking, pausing and closing, and the current media list reloads after playback
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (126)] - 2026-11-22
 
 ### Security
