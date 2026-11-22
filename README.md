@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (124) (2026-11-22)
+
+- Addressed devices where build 123 still left MPEG-TS seeks frozen on the target frame while audio continued. The avformat software-decode path now recreates the entire VLC player and video canvas, isolates delayed callbacks from the old player, and no longer replaces only the media input
+- TS seeks preserve play/pause state, audio/subtitle tracks, external subtitles, playback rate and subtitle delay; MKV, MP4 and other containers keep in-place seeking
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (123) (2026-11-22)
 
 - Addressed MPEG-TS seeks where audio continued but the picture remained frozen. TS sources using the avformat software-decode path now reopen at the target time to rebuild demuxing, decoding and video output, while preserving play/pause state, audio/subtitle tracks and external subtitles; other containers keep in-place seeking

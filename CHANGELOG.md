@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (124)] - 2026-11-22
+
+### Fixed
+
+- Addressed devices where build 123 still left MPEG-TS seeks frozen on the target frame while audio continued. The avformat software-decode path now destroys and recreates the entire VLC player and video canvas instead of replacing only the media input; delayed state and timeline callbacks from the old player are isolated
+- TS seeks preserve play/pause state, audio/subtitle track selections, external subtitles, playback rate and subtitle delay; MKV, MP4 and other containers keep in-place seeking
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (123)] - 2026-11-22
 
 ### Fixed
