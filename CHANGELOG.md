@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (123)] - 2026-11-22
+
+### Fixed
+
+- Addressed MPEG-TS seeks where audio continued but the picture remained frozen. TS sources using the avformat software-decode path now reopen at the target time to rebuild demuxing, decoding and video output. Play/pause state, audio/subtitle track selections and external subtitles are preserved; MKV, MP4 and other containers keep in-place seeking
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (122)] - 2026-11-22
 
 ### Fixed

@@ -2,6 +2,13 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (123)] - 2026-11-22
+
+### 修复
+
+- 针对 TS 跳转后音频继续、画面卡住的问题，TS 的 avformat/软解链路改为从目标时间重新打开媒体输入，重建解复用、解码与视频输出；保留播放/暂停状态、音轨、字幕轨和外挂字幕，MKV、MP4 等其他容器仍使用原地 seek
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (122)] - 2026-11-22
 
 ### 修复

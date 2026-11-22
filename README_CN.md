@@ -228,6 +228,11 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(123)(2026-11-22)
+
+- 针对 TS 跳转后音频继续、画面卡住的问题，TS 的 avformat/软解链路改为从目标时间重新打开媒体输入，重建解复用、解码与视频输出；保留播放/暂停状态、音轨、字幕轨和外挂字幕，MKV、MP4 等其他容器仍使用原地 seek
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(122)(2026-11-22)
 
 - 针对部分真机播放远程 Emby/STRM MPEG-TS 时进度条继续前进、画面却冻结的问题，TS 的 FFmpeg 解复用链路改用软件解码，避开 VideoToolbox 硬解输出兼容问题；MKV、MP4 等其他容器保持原解码路径

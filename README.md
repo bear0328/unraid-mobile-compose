@@ -257,6 +257,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (123) (2026-11-22)
+
+- Addressed MPEG-TS seeks where audio continued but the picture remained frozen. TS sources using the avformat software-decode path now reopen at the target time to rebuild demuxing, decoding and video output, while preserving play/pause state, audio/subtitle tracks and external subtitles; other containers keep in-place seeking
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (122) (2026-11-22)
 
 - Addressed remote Emby/STRM MPEG-TS playback on some devices where the timeline advanced after build 120 but the picture remained frozen. TS sources using the FFmpeg demuxer now use software decoding to avoid the VideoToolbox output compatibility issue; MKV, MP4 and other containers keep their existing decode paths
