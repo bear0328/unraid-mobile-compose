@@ -228,6 +228,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(121)(2026-11-22)
+
+- 原生播放器新增 Jellyfin，与 Emby 共用现有播放器；在「设置 → 媒体服务器」选择服务类型后，可浏览媒体库与海报、切换用户、原始流 Direct Play、续播并回传播放进度
+- Jellyfin 的 API、海报和 VLC 播放请求均使用所需的 MediaBrowser 鉴权，包含后续 Range/seek；保留反向代理子路径，远程 STRM 源不会收到媒体服务器 API Key
+- 现有 Emby 配置、钥匙串凭据和本机续播记录保持兼容；仍不包含服务端转码。仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(120)(2026-11-22)
 
 - 修复部分远程 Emby/STRM MPEG-TS 视频只显示首帧、随后卡住或提前结束的问题；识别为 TS 的片源改用 VLCKit 的 FFmpeg 解复用器，兼容无扩展名和通用 MIME 的 CDN 地址，无需转码，也不改变 MKV/MP4 播放路径

@@ -2,6 +2,21 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (121)] - 2026-11-22
+
+### 新增
+
+- 原生播放器新增 Jellyfin，与 Emby 共用现有播放器；在「设置 → 媒体服务器」选择服务类型后，可通过原「播放器」页签浏览媒体库与海报、切换用户、原始流 Direct Play、读取续播位置并回传播放进度
+- Jellyfin 使用服务器根路径，不追加 Emby API 前缀，并保留反向代理子路径；现有 Emby 配置、钥匙串凭据、服务器独立偏好和本机续播记录保持兼容
+
+### 安全
+
+- Jellyfin 的 API、海报、播放及后续 Range/seek 请求统一使用 `Authorization: MediaBrowser Token="..."`，不再依赖该部署不支持的查询参数或旧请求头鉴权；远程 STRM 源不会收到媒体服务器 Authorization
+
+### 变更
+
+- 仍不包含服务端转码。仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (120)] - 2026-11-22
 
 ### 修复

@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (121)] - 2026-11-22
+
+### Added
+
+- Added Jellyfin alongside Emby in the native player. Settings → Media Servers selects the service type, while the existing Player tab provides libraries, artwork, user switching, original-stream Direct Play, resume positions and playback progress reports
+- Jellyfin preserves reverse-proxy subpaths and uses the server root rather than appending Emby's API prefix. Existing Emby configurations, keychain credentials, server-specific preferences and local resume entries remain compatible
+
+### Security
+
+- Jellyfin API, artwork, playback and subsequent Range/seek requests use `Authorization: MediaBrowser Token="..."` instead of unsupported query or legacy header authentication. Remote STRM sources never receive the media server's authorization header
+
+### Changed
+
+- Server-side transcoding is still not included. Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (120)] - 2026-11-22
 
 ### Fixed

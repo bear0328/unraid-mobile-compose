@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (121) (2026-11-22)
+
+- Added Jellyfin alongside Emby in the native player. Choose the service type in Settings → Media Servers, then browse libraries and artwork, switch users, Direct Play original streams, resume playback and report progress through the existing player
+- Jellyfin API, artwork and VLC playback requests use the required MediaBrowser authorization, including subsequent Range/seek requests. Reverse-proxy subpaths are preserved, and remote STRM sources never receive the media server's API key
+- Existing Emby configurations, keychain credentials and local resume entries remain compatible. Server-side transcoding is still not included; native app only, with no Web, Docker or compose-api changes
+
 ### TestFlight 2.0.0 (120) (2026-11-22)
 
 - Fixed remote Emby/STRM MPEG-TS videos that showed the first frame but then stalled or ended early. Recognized TS sources now use VLCKit's FFmpeg demuxer, including extensionless CDN URLs with generic MIME types, without transcoding or changing MKV/MP4 playback
