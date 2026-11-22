@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (120)] - 2026-11-22
+
+### Fixed
+
+- Remote Emby/STRM MPEG-TS videos no longer stop after the first frame or report an early end on affected H.264 streams. Recognized TS sources use VLCKit's FFmpeg demuxer, including extensionless CDN URLs with generic MIME types, without transcoding or changing MKV/MP4 playback
+- Playback that ends far before its known duration now surfaces a retryable error instead of silently appearing to complete
+
+### Changed
+
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (119)] - 2026-11-21
 
 ### Fixed

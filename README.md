@@ -257,6 +257,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (120) (2026-11-22)
+
+- Fixed remote Emby/STRM MPEG-TS videos that showed the first frame but then stalled or ended early. Recognized TS sources now use VLCKit's FFmpeg demuxer, including extensionless CDN URLs with generic MIME types, without transcoding or changing MKV/MP4 playback
+- Videos that end far before their known duration now show a retryable playback error instead of silently appearing to finish
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (119) (2026-11-21)
 
 - Sort field and direction are saved independently per Emby server, user and directory, so libraries, series and seasons no longer overwrite one another and each choice survives navigation and relaunch

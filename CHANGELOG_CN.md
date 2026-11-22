@@ -2,6 +2,17 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (120)] - 2026-11-22
+
+### 修复
+
+- 修复部分远程 Emby/STRM MPEG-TS 视频只显示首帧、随后卡住或提前结束的问题；识别为 TS 的片源改用 VLCKit 的 FFmpeg 解复用器，兼容无扩展名和通用 MIME 的 CDN 地址，无需转码，也不改变 MKV/MP4 播放路径
+- 已知片长的视频若明显提前结束，现在会显示可重试的播放错误，不再静默表现为播放完成
+
+### 变更
+
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ## [TestFlight 2.0.0 (119)] - 2026-11-21
 
 ### 修复
