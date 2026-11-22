@@ -228,6 +228,11 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(122)(2026-11-22)
+
+- 针对部分真机播放远程 Emby/STRM MPEG-TS 时进度条继续前进、画面却冻结的问题，TS 的 FFmpeg 解复用链路改用软件解码，避开 VideoToolbox 硬解输出兼容问题；MKV、MP4 等其他容器保持原解码路径
+- 仅原生 App 更新，Web、Docker 和 compose-api 无变化，无需重跑安装脚本
+
 ### TestFlight 2.0.0(121)(2026-11-22)
 
 - 原生播放器新增 Jellyfin，与 Emby 共用现有播放器；在「设置 → 媒体服务器」选择服务类型后，可浏览媒体库与海报、切换用户、原始流 Direct Play、续播并回传播放进度

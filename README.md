@@ -257,6 +257,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (122) (2026-11-22)
+
+- Addressed remote Emby/STRM MPEG-TS playback on some devices where the timeline advanced after build 120 but the picture remained frozen. TS sources using the FFmpeg demuxer now use software decoding to avoid the VideoToolbox output compatibility issue; MKV, MP4 and other containers keep their existing decode paths
+- Native app only; Web, Docker and compose-api are unchanged, with no install-script rerun needed
+
 ### TestFlight 2.0.0 (121) (2026-11-22)
 
 - Added Jellyfin alongside Emby in the native player. Choose the service type in Settings → Media Servers, then browse libraries and artwork, switch users, Direct Play original streams, resume playback and report progress through the existing player
