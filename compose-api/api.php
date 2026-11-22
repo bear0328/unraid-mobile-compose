@@ -25,7 +25,7 @@ declare(strict_types=1);
  *       外泄不泄 key 本身;无前缀的旧明文格式自动兼容(重跑安装脚本即升级为哈希)。
  *
  * 端点:
- *   GET  ?action=capabilities             宿主能力自检:Unraid/PHP 版本、api.php 正本与执行位置
+ *   GET  ?action=capabilities             宿主能力自检:App/Docker 配套版本、Unraid/PHP 版本、api.php 正本与执行位置
  *                                         sha256、go 恢复错误日志(restore-error.log)、各 Unraid
  *                                         内部依赖可用性。只读、不执行外部命令、不联网;
  *                                         前端按 deps 降级,OS 升级后不必逐项人工排查
@@ -82,6 +82,8 @@ declare(strict_types=1);
  *       对所有 POST 强制 webGui CSRF 校验,无 token 静默 exit(空 200);PUT 不受检查。
  */
 
+// 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
+const APP_VERSION = '1.5.3';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -4743,6 +4745,7 @@ function readCapabilities(): array
     };
 
     return [
+        'appVersion' => APP_VERSION,
         'unraidVersion' => $unraidVersion,
         'phpVersion' => PHP_VERSION,
         'apiSha256' => $sha(__FILE__),

@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (128)] - 2026-11-22
+
+### Added
+
+- Settings → About now distinguishes **unRAID-Mobile App** from **unRAID-Mobile Docker**, showing the installed App and host-agent/Docker versions separately
+- An older Docker/backend release shows an update-available notice with manual upgrade steps. App updates do not update Docker automatically; updating the container and re-running the host install script are both required
+- Legacy backends without a version field are identified as upgradeable, while network failures do not create false update notices and newer backends never prompt a downgrade
+
+### Changed
+
+- Coordinated with Web/Docker v1.5.3 and the updated compose-api. **Re-run the host install script after upgrading**
+
+## [1.5.3] - 2026-11-22
+
+### Added
+
+- Web and native About sections now show the App version and the actual Docker/host-agent version independently, with an update-available state when the backend is older than the App's companion release
+- Manual guidance covers updating the container, re-running `install-compose-api.sh`, and refreshing to confirm the version. Missing legacy version fields, unavailable network requests, and newer backends are handled distinctly
+- compose-api `capabilities` now returns `appVersion`; the release script keeps this value, `package.json`, and the native companion Docker version synchronized before calculating the installer SHA-256
+
+### Changed
+
+- Web, TestFlight 2.0.0 (128), and compose-api are a coordinated release. **Re-run the host install script after upgrading**
+
 ## [TestFlight 2.0.0 (127)] - 2026-11-22
 
 ### Fixed

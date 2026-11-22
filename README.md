@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,18 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (128) (2026-11-22)
+
+- Settings → About now separates **unRAID-Mobile App** and **unRAID-Mobile Docker**, showing both installed versions and an update-available notice when the Docker/backend is older
+- Manual guidance covers updating the container, re-running the host install script, and refreshing to confirm. Legacy backends, network failures, and newer backends are handled without false upgrade or downgrade prompts
+- Coordinated with Web/Docker v1.5.3 and compose-api. **Re-run the host install script after upgrading**
+
+### v1.5.3 (2026-11-22)
+
+- Web and native About sections display the App and Docker/host-agent versions independently, with clear manual upgrade steps when the backend is behind the App's companion release
+- compose-api `capabilities` now reports `appVersion`; the release script automatically synchronizes the backend, package, and native companion version values
+- Web, TestFlight 2.0.0 (128), and compose-api require a coordinated upgrade. **Re-run the host install script after upgrading**
 
 ### TestFlight 2.0.0 (127) (2026-11-22)
 

@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,18 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(128)(2026-11-22)
+
+- 「设置 → 关于」明确区分 **unRAID-Mobile App** 与 **unRAID-Mobile Docker**，分别显示两个版本，Docker/后端落后时提示“可升级”
+- 手动说明覆盖更新容器、重跑宿主安装脚本和刷新确认；旧版无版本字段、网络失败及后端比 App 新时均不会误报升级或降级
+- 与 Web/Docker v1.5.3 和 compose-api 协调发布，**升级后需重跑宿主安装脚本**
+
+### v1.5.3(2026-11-22)
+
+- Web 与原生「关于」分别显示 App 和 Docker/宿主后端版本，后端落后于 App 配套版本时提供清晰的手动升级步骤
+- compose-api 的 `capabilities` 新增 `appVersion`；发布脚本自动同步后端、package 与原生配套版本号
+- Web、TestFlight 2.0.0(128) 和 compose-api 需协调升级，**升级后需重跑宿主安装脚本**
 
 ### TestFlight 2.0.0(127)(2026-11-22)
 

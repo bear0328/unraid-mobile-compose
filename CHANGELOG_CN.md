@@ -2,6 +2,30 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (128)] - 2026-11-22
+
+### 新增
+
+- 「设置 → 关于」明确区分 **unRAID-Mobile App** 与 **unRAID-Mobile Docker**，分别显示本机 App 版本和当前宿主后端/Docker 版本
+- Docker/后端落后时显示“可升级”与手动升级步骤；App 更新不会自动更新 Docker，需同时更新容器并重跑宿主安装脚本
+- 无版本字段的旧后端会提示升级；网络失败不误报，后端比 App 新时不提示降级
+
+### 变更
+
+- 与 Web/Docker v1.5.3 及新版 compose-api 协调发布，**升级后需重跑宿主安装脚本**
+
+## [1.5.3] - 2026-11-22
+
+### 新增
+
+- Web 与原生「关于」分别显示 App 版本和实际 Docker/宿主后端版本，后端落后于 App 配套版本时显示“可升级”
+- 手动说明覆盖更新容器、重跑 `install-compose-api.sh` 和刷新确认；旧版无版本字段、网络不可用和后端版本更新三种状态分别处理
+- compose-api 的 `capabilities` 新增 `appVersion`；发布脚本在计算安装器 SHA-256 前自动同步该字段、`package.json` 与原生配套 Docker 版本
+
+### 变更
+
+- Web、TestFlight 2.0.0(128) 和 compose-api 需协调升级，**升级后需重跑宿主安装脚本**
+
 ## [TestFlight 2.0.0 (127)] - 2026-11-22
 
 ### 修复
