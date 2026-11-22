@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,18 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(126)(2026-11-22)
+
+- License 增加本机 compose-api 二次验签和绑机凭证；完整 Key 只发送到用户自己的 Unraid 后端，中心仍只接收 SHA-256 哈希。首次激活仍需中心联网绑机，本机同步失败不阻断其他 Pro 功能
+- 容器、VM 和 Parity 操作补齐界面与 Store 双层 Pro 门控；Keychain 保存失败不再误报激活成功，Docker 更新遇到不确定错误不再重复执行
+- 与 Web/Docker v1.5.2 和新版 compose-api 协调发布，**升级后需重跑宿主安装脚本**；旧客户端访问新版后端 Pro 路由会返回 403
+
+### v1.5.2(2026-11-22)
+
+- compose-api 对 Pro 路由增加本机 ECDSA 验签、有效期和绑机凭证校验；首次在新后端建立凭证需联网，之后可离线验证，中心服务仍只保存哈希
+- Web 激活失败恢复原授权，本机后端暂不可用不阻断其他 Pro 功能；单个 Docker 更新不再因超时、网络错误或 403/502/503 重复执行 GraphQL
+- Web、TestFlight 2.0.0(126) 和 compose-api 需协调升级，**升级后需重跑宿主安装脚本**
 
 ### TestFlight 2.0.0(125)(2026-11-22)
 

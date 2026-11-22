@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.1/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.2/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,18 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (126) (2026-11-22)
+
+- Added local compose-api License signature verification and a machine-bound receipt. The full key goes only to the user's own Unraid host agent, while the central service still receives SHA-256 hashes only. First activation still requires central online binding; local synchronization failure does not block other Pro features
+- Added UI and Store Pro enforcement for container, VM and parity actions. Keychain save failures no longer report false activation success, and Docker updates no longer repeat mutations after ambiguous errors
+- Coordinated with Web/Docker v1.5.2 and the new compose-api. **Re-run the host install script after upgrading**; older clients receive 403 from Pro host-agent routes
+
+### v1.5.2 (2026-11-22)
+
+- compose-api verifies License ECDSA signatures, expiration and machine-bound receipts on Pro routes. Establishing a receipt on a new host agent requires network access once, after which offline verification works; the central service still stores hashes only
+- Failed Web activation restores the previous authorization, and a temporarily unavailable host agent does not block other Pro features. Single Docker updates no longer repeat GraphQL mutations after timeouts, network errors or 403/502/503
+- Web, TestFlight 2.0.0 (126) and compose-api require a coordinated upgrade. **Re-run the host install script after upgrading**
 
 ### TestFlight 2.0.0 (125) (2026-11-22)
 

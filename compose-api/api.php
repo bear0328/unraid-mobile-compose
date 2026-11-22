@@ -18,6 +18,9 @@ declare(strict_types=1);
  *
  * 鉴权: X-Api-Key header 与 /boot/config/plugins/unraid-mobile/apikey 比对
  *       (与 GraphQL 同一个密钥,app 端零额外配置;flash 盘 root 600,不在 web 服务路径)。
+ *       Pro 路由另验 X-Unraid-Mobile-License;完整 key 不落盘/不记日志,
+ *       首次由中心确认绑机后仅在本机保存 key/guid 的 SHA-256 凭证,后续离线可用。
+ *   PUT  {action:licenseactivate}          激活时同步本机后端授权凭证(仍需 X-Api-Key)。
  *       【续 60】文件格式 `sha256:<hex>` = 存 key 的哈希,不明文存 key —— flash 备份/诊断包
  *       外泄不泄 key 本身;无前缀的旧明文格式自动兼容(重跑安装脚本即升级为哈希)。
  *
@@ -168,6 +171,21 @@ const SERVER_POWER_COMMANDS = [
 // 所以「读状态」这一步本身不会唤醒任何盘;只有用户显式调用才发起起转。
 const DISKS_INI_FILE = '/usr/local/emhttp/state/disks.ini';
 const ARRAY_VAR_FILE = '/var/local/emhttp/var.ini';
+// Pro 后端二次授权:完整 key 仅随本机请求进入 PHP,不写日志/不落盘;
+// 中心与本机持久凭证都只保存 SHA-256(key) + SHA-256(flashGuid)。
+const LICENSE_PUBLIC_KEY_B64U = 'BBz7qrzF-TaE-alABvbNyn4bVGEmpLZtW7B-_V0yslZ8wglJqV4zhEB3sXgp6kOe8f4E_zfm8rFJU1AvkA2X3K8';
+const LICENSE_BIND_URL = 'https://mobile.bearsound.top:16666/license-api/v1/license/bind';
+const LICENSE_RECEIPT_FILE = '/boot/config/plugins/unraid-mobile/license-backend-binding.json';
+const PRO_GET_ACTIONS = [
+    'cputemp', 'vminfo', 'vmstats', 'vmlog',
+    'plugins', 'pluginjob', 'caapps', 'catemplate', 'cajob',
+    'dockertemplate', 'dockereditjob', 'list', 'get', 'log', 'dockerlog',
+];
+const PRO_PUT_ACTIONS = [
+    'plugincheck', 'pluginupdate', 'pluginremove', 'pluginupdateall', 'plugininstall',
+    'cainstall', 'dockeredit', 'autostart', 'indexcfg', 'reindex',
+    'dockerupdate', 'serverpower', 'up', 'down', 'restart', 'pull', 'rebuild',
+];
 const DISK_WAKE_LOCK_FILE = '/tmp/unraid-mobile-diskwake.lock';
 const EMCMD = '/usr/local/sbin/emcmd';
 // 并行提交后最多等 30s(每秒重读一次状态文件),整体请求上限 45s
@@ -346,6 +364,194 @@ function readJsonFile(string $path): ?array
 {
     $data = json_decode((string) @file_get_contents($path), true);
     return is_array($data) ? $data : null;
+}
+
+// ---------- Pro 后端二次授权 ----------
+// 与 Web/Swift 使用同一 ECDSA P-256 SHA-256 公钥;私钥只存在签发机。
+// 首次或升级后首次后端授权需联网确认中心绑定;确认后本机凭证离线有效。
+// 凭证只是后端缓存,不能替代每次请求的原始 key 验签;过期 key 仍会被拒绝。
+function licenseBase64UrlDecode(string $value): ?string
+{
+    if ($value === '' || !preg_match('/^[A-Za-z0-9_-]+$/', $value) || strlen($value) % 4 === 1) {
+        return null;
+    }
+    $base64 = strtr($value, '-_', '+/');
+    $base64 .= str_repeat('=', (4 - strlen($base64) % 4) % 4);
+    $decoded = base64_decode($base64, true);
+    return is_string($decoded) ? $decoded : null;
+}
+
+function licenseRawSignatureToDer(string $raw): ?string
+{
+    // gen-license.mjs / WebCrypto / CryptoKit 均使用 IEEE-P1363 raw r||s(64 字节)。
+    if (strlen($raw) !== 64) {
+        return null;
+    }
+    $parts = [];
+    foreach ([substr($raw, 0, 32), substr($raw, 32, 32)] as $part) {
+        $integer = ltrim($part, "\0");
+        if ($integer === '') {
+            $integer = "\0";
+        }
+        if ((ord($integer[0]) & 0x80) !== 0) {
+            $integer = "\0" . $integer;
+        }
+        // 单个 P-256 整数 DER 长度最多 33 字节,使用短格式即可。
+        $parts[] = "\x02" . chr(strlen($integer)) . $integer;
+    }
+    $body = $parts[0] . $parts[1];
+    return "\x30" . chr(strlen($body)) . $body;
+}
+
+function licensePublicKeyPem(): string
+{
+    $raw = licenseBase64UrlDecode(LICENSE_PUBLIC_KEY_B64U);
+    if ($raw === null || strlen($raw) !== 65 || $raw[0] !== "\x04") {
+        fail(500, 'Pro 授权公钥配置无效');
+    }
+    // SubjectPublicKeyInfo: id-ecPublicKey + prime256v1 + 65 字节未压缩点。
+    $spki = hex2bin('3059301306072a8648ce3d020106082a8648ce3d030107034200') . $raw;
+    return "-----BEGIN PUBLIC KEY-----\n"
+        . chunk_split(base64_encode($spki), 64, "\n")
+        . "-----END PUBLIC KEY-----\n";
+}
+
+function licenseVerifyKey(string $key): array
+{
+    $key = trim($key);
+    if ($key === '' || strlen($key) > 16384 || !str_starts_with($key, 'UMPRO1.')) {
+        fail(403, 'Pro License 缺失或格式无效');
+    }
+    $parts = explode('.', substr($key, 7));
+    if (count($parts) !== 2) {
+        fail(403, 'Pro License 格式无效');
+    }
+    [$payloadB64, $signatureB64] = $parts;
+    $payload = licenseBase64UrlDecode($payloadB64);
+    $signature = licenseBase64UrlDecode($signatureB64);
+    $info = $payload === null ? null : json_decode($payload, true);
+    if (!is_array($info) || !is_string($info['email'] ?? null) || ($info['tier'] ?? null) !== 'pro'
+        || ($info['autoBind'] ?? null) !== true || !array_key_exists('guid', $info) || $info['guid'] !== null
+        || !array_key_exists('exp', $info) || ($info['exp'] !== null && !is_numeric($info['exp']))) {
+        fail(403, 'Pro License 无效或旧格式已停用');
+    }
+    $der = $signature === null ? null : licenseRawSignatureToDer($signature);
+    if ($der === null || !function_exists('openssl_verify')
+        || openssl_verify($payloadB64, $der, licensePublicKeyPem(), OPENSSL_ALGO_SHA256) !== 1) {
+        fail(403, 'Pro License 签名无效');
+    }
+    if ($info['exp'] !== null && time() > (int) $info['exp']) {
+        fail(403, 'Pro License 已过期');
+    }
+    return $info;
+}
+
+function licenseServerGuid(): string
+{
+    $vars = @parse_ini_file(ARRAY_VAR_FILE, false, INI_SCANNER_RAW);
+    $guid = is_array($vars) ? trim((string) ($vars['flashGuid'] ?? '')) : '';
+    if ($guid === '') {
+        fail(403, '无法读取本机 unRAID 标识,暂不能确认 Pro 授权');
+    }
+    return $guid;
+}
+
+function licenseReceiptMatches(array $record): bool
+{
+    $cached = readJsonFile(LICENSE_RECEIPT_FILE);
+    foreach (['keyHash', 'guidHash'] as $field) {
+        if (!is_string($cached[$field] ?? null) || !preg_match('/^[a-f0-9]{64}$/', $cached[$field])) {
+            return false;
+        }
+        if (!hash_equals($cached[$field], $record[$field])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function licenseCenterBind(array $record): string
+{
+    if (!function_exists('curl_init')) {
+        return 'unavailable';
+    }
+    $curl = curl_init(LICENSE_BIND_URL);
+    if ($curl === false) {
+        return 'unavailable';
+    }
+    curl_setopt_array($curl, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($record, JSON_UNESCAPED_SLASHES),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_FOLLOWLOCATION => false,
+    ]);
+    $response = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    curl_close($curl);
+    if ($status === 409) {
+        return 'mismatch';
+    }
+    if (!is_string($response) || $status !== 200) {
+        return 'unavailable';
+    }
+    $body = json_decode($response, true);
+    $result = is_array($body) ? ($body['status'] ?? '') : '';
+    return in_array($result, ['bound', 'active'], true) ? 'bound' : 'unavailable';
+}
+
+function licenseWriteReceipt(array $record): void
+{
+    $data = json_encode([
+        'version' => 1,
+        'keyHash' => $record['keyHash'],
+        'guidHash' => $record['guidHash'],
+        'boundAt' => gmdate('c'),
+    ], JSON_UNESCAPED_SLASHES);
+    $tmp = LICENSE_RECEIPT_FILE . '.' . getmypid() . '.tmp';
+    if (!is_string($data) || @file_put_contents($tmp, $data, LOCK_EX) === false) {
+        fail(403, '无法保存本机 Pro 授权凭证,请检查后端安装与存储权限');
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, LICENSE_RECEIPT_FILE)) {
+        @unlink($tmp);
+        fail(403, '无法保存本机 Pro 授权凭证,请检查后端安装与存储权限');
+    }
+}
+
+function requireProLicense(): void
+{
+    $key = $_SERVER['HTTP_X_UNRAID_MOBILE_LICENSE'] ?? '';
+    if (!is_string($key) || trim($key) === '') {
+        fail(403, '该功能需要 Pro License,请先在设置中激活');
+    }
+    licenseVerifyKey($key);
+    $record = [
+        'keyHash' => hash('sha256', trim($key)),
+        'guidHash' => hash('sha256', licenseServerGuid()),
+    ];
+    if (licenseReceiptMatches($record)) {
+        return; // 本机已完成首次授权,后续完全离线,不访问中心。
+    }
+    $result = licenseCenterBind($record);
+    if ($result === 'mismatch') {
+        fail(403, '本 License 已绑定其他 unRAID 服务器');
+    }
+    if ($result !== 'bound') {
+        // 403 不会被 dockerupdate 的旧 GraphQL 兼容降级误认为"后端不可用"。
+        fail(403, '本机后端首次确认 Pro 授权需要联网,请联网后重试');
+    }
+    licenseWriteReceipt($record);
+}
+
+function requireProAction(string $action, string $method): void
+{
+    $protected = $method === 'GET' ? PRO_GET_ACTIONS : PRO_PUT_ACTIONS;
+    if (in_array($action, $protected, true)) {
+        requireProLicense();
+    }
 }
 
 function tailFile(string $path): string
@@ -4563,6 +4769,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
     $action = (string) ($_GET['action'] ?? '');
+    requireProAction($action, 'GET');
 
     // 宿主能力自检:只读、不依赖 PROJECTS_DIR,放在最前
     if ($action === 'capabilities') {
@@ -4677,6 +4884,10 @@ if ($method === 'GET') {
     // scope=all 扫 /mnt/user 唤醒休眠盘(前端二次确认),audit 留痕
     if ($action === 'search') {
         $scope = (string) ($_GET['scope'] ?? 'cache');
+        // scope=all 是免费版的显式全盘搜索;Pro 的 cache/index 快速搜索需要后端授权。
+        if ($scope !== 'all') {
+            requireProLicense();
+        }
         if ($scope === 'all') {
             audit('search-all', mb_substr((string) ($_GET['q'] ?? ''), 0, 64), 'ok');
         }
@@ -4766,6 +4977,13 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         fail(400, '请求体必须是 JSON');
     }
     $action = (string) ($body['action'] ?? '');
+
+    // 激活时同步本机后端凭证;之后 Pro 路由离线验签 + 核对本机哈希。
+    if ($action === 'licenseactivate') {
+        requireProLicense();
+        ok(['active' => true]);
+    }
+    requireProAction($action, 'PUT');
 
     if ($action === 'plugincheck') {
         $jobId = startPluginJob('plugincheck');
@@ -4901,6 +5119,8 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
 }
 
 if ($method === 'PUT') {
+    // 非 JSON PUT 是 Compose YAML 保存,同样属于 Pro 写操作。
+    requireProLicense();
     $name = validName($_GET['name'] ?? '');
     $dir = PROJECTS_DIR . '/' . $name;
     $yaml = (string) file_get_contents('php://input');

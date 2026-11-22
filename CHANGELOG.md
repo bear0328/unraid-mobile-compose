@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (126)] - 2026-11-22
+
+### Security
+
+- Added local compose-api signature verification and a machine-bound receipt for License authorization. The full key is sent only to the user's own Unraid host agent; the central service still receives only SHA-256 hashes of the key and flash GUID. First activation still requires central online binding, while local host-agent synchronization is best-effort and does not block other Pro features
+- Added UI and Store enforcement for direct GraphQL container, VM and parity actions. Confirmation reads the latest authorization state, missing Providers fail closed, and free users no longer periodically request Pro CPU temperature
+
+### Fixed
+
+- Keychain save failures no longer report false activation success. Failed activation preserves the previous License and binding state, and a temporarily unavailable local host agent does not roll back other completed Pro activation
+- Docker updates no longer repeat the GraphQL mutation after timeouts, network errors, 403, 502/503 or other ambiguous outcomes. Pro write requests now use a 20-second timeout to cover the host agent's initial central confirmation
+
+### Changed
+
+- Coordinated with Web/Docker v1.5.2 and the new compose-api. **Re-run the host install script after upgrading**. Older clients do not send the License header and receive 403 from Pro host-agent routes
+
+## [1.5.2] - 2026-11-22
+
+### Security
+
+- compose-api now verifies the original License ECDSA signature, expiration and machine-bound receipt on Pro routes. Clients send the full License only to their own host agent; the central service continues to store hashes only
+- First activation requires central online binding. Local host-agent synchronization is best-effort; establishing a receipt on a new host agent requires network access once, after which the local receipt and original key support offline verification while the signed expiration remains enforced
+
+### Fixed
+
+- Failed Web activation restores the previous License, state and binding cache instead of deleting the old authorization. A missing, legacy or temporarily unavailable host agent does not block other Pro features
+- Single Docker updates fall back to GraphQL only when the host agent explicitly lacks the new action. Timeouts, network errors, 403, 502/503 and business errors no longer repeat updates; Pro write timeouts include central-confirmation headroom
+
+### Changed
+
+- Web, TestFlight 2.0.0 (126) and compose-api are a coordinated release. **Re-run the host install script after upgrading**. Older clients receive 403 from Pro host-agent routes because they do not send the License header
+
 ## [TestFlight 2.0.0 (125)] - 2026-11-22
 
 ### Fixed
