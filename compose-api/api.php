@@ -55,6 +55,10 @@ declare(strict_types=1);
  *   PUT  {action:dockeredit,name,revision,...配置}
  *                                         原子更新模板并异步重建;缺镜像才拉取,保持原运行状态
  *   GET  ?action=dockereditjob&id=X          参数编辑任务 running/log/result(严格任务 ID)
+ *   PUT  {action:dockerupdate,name,expectedId,requestId}
+ *                                         普通容器异步更新;服务端复核 ID/Compose/模板并支持幂等恢复
+ *   GET  ?action=dockerlog&name=X&requestId=X
+ *                                         更新任务 jobId/state/running/log/result;异常退出不冒充确定失败
  *   PUT  {action:cainstall,templateUrl,values}
  *                                          重新校验 feed 与模板,仅新容器;以 CA 模板直写用户模板
  *                                          my-<name>.xml(不再伪造 $_POST/include CreateDocker.php),
@@ -83,7 +87,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.5';
+const APP_VERSION = '1.5.6';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -127,6 +131,8 @@ const INDEX_CRON_REGISTER = '/boot/config/plugins/unraid-mobile/register-index-c
 // 【续 147】docker 容器更新(异步带 pull 进度日志):工作目录在 tmpfs,重启自清零 flash 磨损
 const DOCKER_UPDATE_DIR = '/tmp/unraid-mobile-dockerupdate';
 const DOCKER_UPDATE_SCRIPT = '/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container';
+const DOCKER_UPDATE_SETSID = '/usr/bin/setsid';
+const DOCKER_UPDATE_START_GRACE_SEC = 30;
 const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
 const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
@@ -1932,84 +1938,374 @@ function releaseDockerContainerLock(string $path, string $owner): void
     if (trim((string) @file_get_contents($path)) === $owner) @unlink($path);
 }
 
-function dockerUpdateJobScript(string $name, string $tmpl, string $dir, string $ip,
-    string $containerLock, string $lockOwner): string
+function dockerUpdateRequestId(mixed $value): string
 {
-    return '#!/bin/bash' . "\n"
-        . 'opLock=' . escapeshellarg($dir . '/op-lock') . "\n"
-        . 'containerLock=' . escapeshellarg($containerLock) . "\n"
-        . 'lockOwner=' . escapeshellarg($lockOwner) . "\n"
-        . 'cleanup() { rm -f "$opLock"; if [ -f "$containerLock" ] && [ "$(<"$containerLock")" = "$lockOwner" ]; then rm -f "$containerLock"; fi; }' . "\n"
-        . 'trap cleanup EXIT' . "\n"
-        . 'cd ' . escapeshellarg($dir) . ' || exit 1' . "\n"
-        . 'exec > update.log 2>&1' . "\n"
-        . 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' . "\n"
+    if ($value === null || $value === '') return bin2hex(random_bytes(16));
+    if (!is_string($value) || !preg_match('/^[a-f0-9]{32}$/D', $value)) {
+        fail(400, 'requestId 必须是 32 位小写十六进制');
+    }
+    return $value;
+}
+
+function dockerUpdateExpectedId(mixed $value): ?string
+{
+    if ($value === null || $value === '') return null;
+    if (!is_string($value)) fail(400, 'expectedId 格式无效');
+    $id = str_starts_with($value, 'container:') ? substr($value, 10) : $value;
+    if (!preg_match('/^[a-f0-9]{12,64}$/iD', $id)) fail(400, 'expectedId 格式无效');
+    return strtolower($id);
+}
+
+/** 更新只接受当前仍存在的普通 Docker 容器;客户端 ID 只作额外冲突检查。 */
+function dockerUpdateContainer(string $name, ?string $expectedId): array
+{
+    $lines = [];
+    $code = 1;
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' inspect --format '
+        . escapeshellarg('{{.Id}}|{{.State.Status}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}')
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null',
+        $lines,
+        $code
+    );
+    if ($code !== 0) fail(404, '容器不存在: ' . $name);
+    [$id, $status, $project] = array_pad(explode('|', trim((string) ($lines[0] ?? '')), 3), 3, '');
+    if (!preg_match('/^[a-f0-9]{64}$/D', $id)) fail(503, '无法确认容器身份,已取消更新');
+    if ($expectedId !== null && !hash_equals($expectedId, strtolower($id))) {
+        fail(409, '容器已被外部替换,请刷新列表后重新确认更新');
+    }
+    if ($project !== '') fail(409, '该容器由 Compose 管理,请使用所属栈更新');
+    if (in_array(strtolower($status), ['paused', 'restarting', 'removing'], true)) {
+        fail(409, '容器当前状态不适合更新,请先恢复运行或停止');
+    }
+    return ['id' => strtolower($id), 'status' => $status];
+}
+
+function dockerUpdateReleaseLocks(string $dir, string $name, string $jobId): void
+{
+    $opLock = $dir . '/op-lock';
+    if (trim((string) @file_get_contents($opLock)) === $jobId) @unlink($opLock);
+    releaseDockerContainerLock(dockerContainerLockPath($name), 'update:' . $jobId);
+}
+
+/**
+ * 同一独立进程组中的任一非僵尸进程存活都视为任务仍活跃。
+ * worker PID 另校验启动时间和 jobId,避免 PID 复用;worker 消失后子进程仍可继续守住任务。
+ */
+function dockerUpdatePidAlive(int $pid): bool
+{
+    if ($pid <= 0) return false;
+    $raw = @file_get_contents('/proc/' . $pid . '/stat');
+    if (!is_string($raw)) return false;
+    $close = strrpos($raw, ')');
+    if ($close === false) return false;
+    $fields = preg_split('/\s+/', trim(substr($raw, $close + 1))) ?: [];
+    return ($fields[0] ?? 'Z') !== 'Z';
+}
+
+function dockerUpdateProcessGroupAlive(array $status): ?bool
+{
+    $pid = (int) ($status['pid'] ?? 0);
+    $pgid = (int) ($status['pgid'] ?? 0);
+    $jobId = (string) ($status['id'] ?? '');
+    if (!is_dir('/proc')) return null;
+    if ($pid <= 0 || $pgid <= 0 || !preg_match('/^[a-f0-9]{32}$/D', $jobId)) return null;
+    foreach (glob('/proc/[0-9]*/stat') ?: [] as $path) {
+        $raw = @file_get_contents($path);
+        if (!is_string($raw)) continue;
+        $close = strrpos($raw, ')');
+        if ($close === false) continue;
+        $fields = preg_split('/\s+/', trim(substr($raw, $close + 1))) ?: [];
+        if ((int) ($fields[2] ?? 0) !== $pgid) continue;
+        if (($fields[0] ?? '') === 'Z') continue;
+        $processPid = (int) basename(dirname($path));
+        if ($processPid === $pid) {
+            $expectedStart = (string) ($status['startedTicks'] ?? '');
+            $actualStart = (string) ($fields[19] ?? '');
+            if ($expectedStart !== '' && !hash_equals($expectedStart, $actualStart)) continue;
+            $cmdline = (string) @file_get_contents('/proc/' . $pid . '/cmdline');
+            if (!str_contains($cmdline, $jobId)) continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+/** 读取并必要时回收任务;只有整个进程组消失才允许把异常运行态落成 unknown。 */
+function readDockerUpdateStatus(string $name): array
+{
+    $dir = DOCKER_UPDATE_DIR . '/' . $name;
+    $status = readJsonFile($dir . '/status.json');
+    $result = readJsonFile($dir . '/result.json');
+    $lockExists = file_exists($dir . '/op-lock');
+    if (!is_array($status) || !preg_match('/^[a-f0-9]{32}$/D', (string) ($status['id'] ?? ''))) {
+        // 部署前的旧 worker 没有 status.json,继续按旧锁观察,绝不贸然回收。
+        $running = $lockExists && $result === null;
+        return [
+            'jobId' => null,
+            'requestId' => null,
+            'state' => $result !== null ? (($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed')
+                : ($running ? 'running' : 'unknown'),
+            'running' => $running,
+            'result' => $result,
+            'message' => null,
+        ];
+    }
+
+    $jobId = (string) $status['id'];
+    $state = (string) ($status['state'] ?? 'queued');
+    $requestId = (string) ($status['requestId'] ?? '');
+    $terminal = in_array($state, ['succeeded', 'failed', 'unknown'], true);
+    $alive = dockerUpdateProcessGroupAlive($status);
+    if ($terminal) {
+        if ($alive === false) dockerUpdateReleaseLocks($dir, $name, $jobId);
+        return [
+            'jobId' => $jobId,
+            'requestId' => $requestId !== '' ? $requestId : null,
+            'state' => $state,
+            'running' => false,
+            'result' => $result,
+            'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+        ];
+    }
+
+    if ($state === 'queued' && (int) ($status['pid'] ?? 0) <= 0) {
+        $createdAt = (int) ($status['createdAt'] ?? 0);
+        if ($lockExists && $createdAt > 0 && time() - $createdAt <= DOCKER_UPDATE_START_GRACE_SEC) {
+            $alive = true;
+        }
+    } elseif ($alive === null && $lockExists) {
+        // 无法读取进程信息时 fail closed,不因为猜测而释放互斥锁。
+        $alive = true;
+    }
+
+    if ($alive === true) {
+        return [
+            'jobId' => $jobId,
+            'requestId' => $requestId !== '' ? $requestId : null,
+            'state' => $state === 'queued' ? 'queued' : 'running',
+            'running' => true,
+            'result' => $result,
+            'message' => null,
+        ];
+    }
+
+    if (is_array($result)) {
+        $state = ($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed';
+        $status['state'] = $state;
+        $status['updatedAt'] = time();
+        writePluginJson($dir . '/status.json', $status);
+    } else {
+        $state = 'unknown';
+        $status['state'] = 'unknown';
+        $status['updatedAt'] = time();
+        $status['message'] = '更新进程已异常退出,无法确认镜像拉取或容器重建结果;请检查日志与容器状态后再操作';
+        writePluginJson($dir . '/status.json', $status);
+    }
+    dockerUpdateReleaseLocks($dir, $name, $jobId);
+    return [
+        'jobId' => $jobId,
+        'requestId' => $requestId !== '' ? $requestId : null,
+        'state' => $state,
+        'running' => false,
+        'result' => is_array($result) ? $result : null,
+        'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+    ];
+}
+
+/** 生成独立进程组 worker;身份、Compose 归属和模板 revision 在 pull 前后都复核。 */
+function dockerUpdateJobScript(array $job): string
+{
+    $name = (string) $job['name'];
+    $jobId = (string) $job['id'];
+    return '#!/bin/sh' . "\n"
+        . 'set -u' . "\n"
+        . 'opLock=' . escapeshellarg((string) $job['dir'] . '/op-lock') . "\n"
+        . 'containerLock=' . escapeshellarg((string) $job['containerLock']) . "\n"
+        . 'lockOwner=' . escapeshellarg('update:' . $jobId) . "\n"
+        . 'statusPath=' . escapeshellarg((string) $job['dir'] . '/status.json') . "\n"
+        . 'resultPath=' . escapeshellarg((string) $job['dir'] . '/result.json') . "\n"
+        . 'jobId=' . escapeshellarg($jobId) . "\n"
+        . 'requestId=' . escapeshellarg((string) $job['requestId']) . "\n"
+        . 'createdAt=' . (int) $job['createdAt'] . "\n"
         . 'name=' . escapeshellarg($name) . "\n"
-        . 'read -r oldcid oldiid img < <(/usr/bin/docker inspect "$name" --format \'{{.Id}} {{.Image}} {{.Config.Image}}\')' . "\n"
-        . 'echo "[$(date +%H:%M:%S)] 更新容器 $name"' . "\n"
-        . 'echo "镜像: $img"' . "\n"
-        . 'trep=$(sed -n \'s:.*<Repository>\\(.*\\)</Repository>.*:\1:p\' ' . escapeshellarg($tmpl) . ' | head -1 | tr -d \'[:space:]\')' . "\n"
+        . 'tmpl=' . escapeshellarg((string) $job['templatePath']) . "\n"
+        . 'expectedId=' . escapeshellarg((string) $job['expectedId']) . "\n"
+        . 'templateRevision=' . escapeshellarg((string) $job['templateRevision']) . "\n"
+        . 'dockerBin=' . escapeshellarg(DOCKER) . "\n"
+        . 'updateScript=' . escapeshellarg(DOCKER_UPDATE_SCRIPT) . "\n"
+        . 'setsidBin=' . escapeshellarg(DOCKER_UPDATE_SETSID) . "\n"
+        . 'updateStatusScript=' . escapeshellarg(__DIR__ . '/update-status.php') . "\n"
+        . 'auditLog=' . escapeshellarg(AUDIT_LOG) . "\n"
+        . 'requestIp=' . escapeshellarg((string) $job['ip']) . "\n"
+        . 'if [ "${1:-}" != "--start" ] || [ "${2:-}" != "$jobId" ]; then exit 64; fi' . "\n"
+        . 'if [ "${3:-}" != "--grouped" ]; then exec "$setsidBin" /bin/sh "$0" --start "$jobId" --grouped; fi' . "\n"
+        . 'cd ' . escapeshellarg((string) $job['dir']) . ' || exit 1' . "\n"
+        . 'exec > update.log 2>&1' . "\n"
+        . 'write_state() {' . "\n"
+        . '  state="$1"; statRest="$(sed "s/.*) //" "/proc/$$/stat" 2>/dev/null)"' . "\n"
+        . '  set -- $statRest; pgid="${3:-0}"; started="${20:-}"; tmp="$statusPath.tmp.$$"' . "\n"
+        . '  printf \'%s\n\' "{\"id\":\"$jobId\",\"name\":\"$name\",\"requestId\":\"$requestId\",\"expectedId\":\"$expectedId\",\"templateRevision\":\"$templateRevision\",\"createdAt\":$createdAt,\"updatedAt\":$(date +%s),\"pid\":$$,\"pgid\":${pgid:-0},\"startedTicks\":\"${started:-}\",\"state\":\"$state\"}" > "$tmp" && mv -f "$tmp" "$statusPath"' . "\n"
+        . '}' . "\n"
+        . 'write_result() {' . "\n"
+        . '  ec="$1"; [ "$ec" -eq 0 ] && result=success || result=error; tmp="$resultPath.tmp.$$"' . "\n"
+        . '  printf \'{"result":"%s","exit_code":%d,"operation":"dockerupdate","timestamp":"%s"}\' "$result" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > "$tmp" && mv -f "$tmp" "$resultPath"' . "\n"
+        . '}' . "\n"
+        . 'cleanup() {' . "\n"
+        . '  if [ -f "$opLock" ] && [ "$(cat "$opLock")" = "$jobId" ]; then rm -f "$opLock"; fi' . "\n"
+        . '  if [ -f "$containerLock" ] && [ "$(cat "$containerLock")" = "$lockOwner" ]; then rm -f "$containerLock"; fi' . "\n"
+        . '}' . "\n"
+        . 'trap cleanup EXIT' . "\n"
+        . 'write_state running' . "\n"
+        . 'load_identity() {' . "\n"
+        . '  line="$("$dockerBin" inspect --format \'{{.Id}}|{{.Image}}|{{.Config.Image}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}|{{.State.Status}}\' "$name" 2>/dev/null)" || return 1' . "\n"
+        . '  currentId="$(printf \'%s\n\' "$line" | cut -d\'|\' -f1)"; currentImageId="$(printf \'%s\n\' "$line" | cut -d\'|\' -f2)"' . "\n"
+        . '  currentImageRef="$(printf \'%s\n\' "$line" | cut -d\'|\' -f3)"; currentProject="$(printf \'%s\n\' "$line" | cut -d\'|\' -f4)"' . "\n"
+        . '  currentStatus="$(printf \'%s\n\' "$line" | cut -d\'|\' -f5)"' . "\n"
+        . '}' . "\n"
+        . 'assert_identity() {' . "\n"
+        . '  load_identity || { echo "!! 无法读取容器身份,已中止"; return 1; }' . "\n"
+        . '  [ "$currentId" = "$expectedId" ] || { echo "!! 容器已被外部替换或删除,不会操作同名新容器"; return 1; }' . "\n"
+        . '  [ -z "$currentProject" ] || { echo "!! 容器已变为 Compose 管理,已中止普通更新"; return 1; }' . "\n"
+        . '  case "$(printf %s "$currentStatus" | tr "[:upper:]" "[:lower:]")" in paused|restarting|removing) echo "!! 容器状态已变化,已中止"; return 1;; esac' . "\n"
+        . '  [ "$(sha256sum "$tmpl" 2>/dev/null | awk "{print \\$1}")" = "$templateRevision" ] || { echo "!! 用户模板在更新期间被修改,已中止"; return 1; }' . "\n"
+        . '}' . "\n"
+        . 'ec=0; oldcid=""; oldiid=""; img=""' . "\n"
+        . 'if assert_identity; then oldcid="$currentId"; oldiid="$currentImageId"; img="$currentImageRef"; else ec=75; fi' . "\n"
+        . 'echo "[$(date +%H:%M:%S)] 更新容器 $name"; echo "镜像: $img"' . "\n"
+        . 'trep=$(sed -n \'s:.*<Repository>\\(.*\\)</Repository>.*:\1:p\' "$tmpl" | head -1 | tr -d \'[:space:]\')' . "\n"
         . 'pulls="$img"; [ -n "$trep" ] && [ "$trep" != "$img" ] && pulls="$img $trep"' . "\n"
-        . 'ec=0' . "\n"
-        . 'for ref in $pulls; do' . "\n"
-        . '  echo; echo "== 拉取镜像 $ref =="' . "\n"
-        . '  /usr/bin/docker pull "$ref" || { ec=$?; break; }' . "\n"
-        . 'done' . "\n"
         . 'if [ "$ec" -eq 0 ]; then' . "\n"
-        . '  echo; echo "== 重建容器 =="' . "\n"
-        . '  ' . escapeshellarg(DOCKER_UPDATE_SCRIPT) . ' "$name"; uec=$?' . "\n"
+        . '  for ref in $pulls; do echo; echo "== 拉取镜像 $ref =="; "$dockerBin" pull "$ref" || { ec=$?; break; }; done' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then assert_identity || ec=75; fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  echo; echo "== 重建容器 =="; "$updateScript" "$name"; uec=$?' . "\n"
         . '  echo "(update_container exit $uec)"; [ "$uec" -ne 0 ] && ec=$uec' . "\n"
         . 'fi' . "\n"
         . 'if [ "$ec" -eq 0 ]; then' . "\n"
-        . '  read -r newcid newiid < <(/usr/bin/docker inspect "$name" --format \'{{.Id}} {{.Image}}\' 2>/dev/null)' . "\n"
-        . '  if [ "$newcid" = "$oldcid" ] && [ "$newiid" = "$oldiid" ]; then' . "\n"
-        . '    echo; echo "!! 未检测到更新动作(容器/镜像 ID 均未变)"; ec=28' . "\n"
-        . '  fi' . "\n"
+        . '  if load_identity; then newcid="$currentId"; newiid="$currentImageId"; else echo "!! 更新后无法读取容器"; ec=41; fi' . "\n"
+        . '  if [ "$ec" -eq 0 ] && [ "$newcid" = "$oldcid" ] && [ "$newiid" = "$oldiid" ]; then echo "!! 未检测到更新动作(容器/镜像 ID 均未变)"; ec=28; fi' . "\n"
         . 'fi' . "\n"
-        . 'if [ "$ec" -eq 0 ]; then' . "\n"
-        . '  echo; echo "== 更新完成 =="' . "\n"
-        . '  /usr/bin/php ' . escapeshellarg(__DIR__ . '/update-status.php') . ' --image "$img" >/dev/null 2>&1' . "\n"
-        . 'fi' . "\n"
-        . 'printf \'{"result":"%s","exit_code":%d,"operation":"dockerupdate","timestamp":"%s"}\' '
-        . '"$([ "$ec" -eq 0 ] && echo success || echo error)" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > result.json' . "\n"
-        . 'printf \'[%s] action=dockerupdate stack=%s result=%s ip=%s\n\' "$(date -Iseconds)" "$name" '
-        . '"$([ "$ec" -eq 0 ] && echo ok || echo fail)" ' . escapeshellarg($ip) . ' >> ' . escapeshellarg(AUDIT_LOG) . "\n"
+        . 'if [ "$ec" -eq 0 ]; then echo; echo "== 更新完成 =="; /usr/bin/php "$updateStatusScript" --image "$img" >/dev/null 2>&1; fi' . "\n"
+        . 'case "$ec" in \'\'|*[!0-9]*) ec=1;; esac' . "\n"
+        . 'write_result "$ec"' . "\n"
+        . '[ "$ec" -eq 0 ] && write_state succeeded || write_state failed' . "\n"
+        . 'printf \'[%s] action=dockerupdate stack=%s result=%s ip=%s\n\' "$(date +%Y-%m-%dT%H:%M:%S%z)" "$name" "$([ "$ec" -eq 0 ] && echo ok || echo fail)" "$requestIp" >> "$auditLog"' . "\n"
         . 'exit "$ec"' . "\n";
 }
 
-/** 【续 147】op-lock + 与参数编辑共用的容器级原子锁;后台 EXIT trap 双向放锁。 */
-function runDockerUpdateAsync(string $name, string $tmpl): void
+/** 返回 jobId/requestId;同一 requestId 的恢复由路由在调用本函数前处理。 */
+function runDockerUpdateAsync(string $name, string $tmpl, array $container,
+    ?string $clientExpectedId, string $requestId): array
 {
+    if (!is_executable(DOCKER_UPDATE_SETSID)) fail(503, '宿主缺少 setsid,无法安全跟踪更新任务');
+    $templateRevision = @hash_file('sha256', $tmpl);
+    if (!is_string($templateRevision)) fail(422, '用户模板读取失败,已取消更新');
     $dir = DOCKER_UPDATE_DIR . '/' . $name;
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
-        fail(500, '工作目录创建失败');
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) fail(500, '工作目录创建失败');
+    $existing = readDockerUpdateStatus($name);
+    if ($existing['running'] === true) {
+        audit('dockerupdate', $name, 'fail');
+        fail(409, '该容器有更新正在进行中,请等待完成');
     }
-    $lockOwner = 'update:' . bin2hex(random_bytes(16));
+
+    $jobId = bin2hex(random_bytes(16));
+    $lockOwner = 'update:' . $jobId;
     $containerLock = acquireDockerContainerLock($name, $lockOwner);
     $queued = false;
-    register_shutdown_function(static function () use (&$queued, $containerLock, $lockOwner): void {
-        if (!$queued) releaseDockerContainerLock($containerLock, $lockOwner);
-    });
-    // 上一轮 result 先清,否则前端轮询会读到旧结果
-    @unlink($dir . '/result.json');
+    $opOwned = false;
     $lockFile = $dir . '/op-lock';
+    register_shutdown_function(static function () use (&$queued, &$opOwned, $lockFile, $jobId, $containerLock, $lockOwner): void {
+        if ($queued) return;
+        if ($opOwned && trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+        releaseDockerContainerLock($containerLock, $lockOwner);
+    });
     $lock = @fopen($lockFile, 'x');
     if ($lock === false) {
         releaseDockerContainerLock($containerLock, $lockOwner);
         audit('dockerupdate', $name, 'fail');
         fail(409, '该容器有更新正在进行中,请等待完成');
     }
-    fwrite($lock, 'dockerupdate');
-    fclose($lock);
-    $job = $dir . '/job.sh';
-    if (file_put_contents($job, dockerUpdateJobScript($name, $tmpl, $dir,
-        (string) ($_SERVER['REMOTE_ADDR'] ?? '-'), $containerLock, $lockOwner)) === false) {
+    if (@fwrite($lock, $jobId) === false) {
+        @fclose($lock);
         @unlink($lockFile);
-        fail(500, '任务脚本写入失败');
+        fail(500, '更新任务锁写入失败');
     }
-    chmod($job, 0700);
-    exec(PATH_ENV . ' nohup bash ' . escapeshellarg($job) . ' > /dev/null 2>&1 &');
+    fclose($lock);
+    $opOwned = true;
+
+    $createdAt = time();
+    $job = [
+        'id' => $jobId,
+        'name' => $name,
+        'dir' => $dir,
+        'containerLock' => $containerLock,
+        'requestId' => $requestId,
+        'createdAt' => $createdAt,
+        'templatePath' => $tmpl,
+        'templateRevision' => $templateRevision,
+        'expectedId' => (string) $container['id'],
+        'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
+    ];
+    try {
+        @unlink($dir . '/result.json');
+        writePluginJson($dir . '/status.json', [
+            'id' => $jobId,
+            'name' => $name,
+            'requestId' => $requestId,
+            'expectedId' => $container['id'],
+            'templateRevision' => $templateRevision,
+            'createdAt' => $createdAt,
+            'updatedAt' => $createdAt,
+            'pid' => 0,
+            'pgid' => 0,
+            'startedTicks' => '',
+            'state' => 'queued',
+        ]);
+        $script = $dir . '/job.sh';
+        if (@file_put_contents($script, dockerUpdateJobScript($job), LOCK_EX) === false) {
+            throw new RuntimeException('任务脚本写入失败');
+        }
+        @chmod($script, 0700);
+        @file_put_contents($dir . '/update.log', '', LOCK_EX);
+    } catch (Throwable $e) {
+        fail(500, $e->getMessage());
+    }
+
+    $spawnOutput = [];
+    $spawnCode = 1;
+    exec(PATH_ENV . ' nohup /bin/sh ' . escapeshellarg($dir . '/job.sh')
+        . ' --start ' . escapeshellarg($jobId) . ' > /dev/null 2>&1 < /dev/null & echo $!',
+        $spawnOutput, $spawnCode);
+    usleep(150000);
+    $launchPid = (int) end($spawnOutput);
+    $latest = readJsonFile($dir . '/status.json');
+    $latestState = is_array($latest) ? (string) ($latest['state'] ?? '') : '';
+    $started = in_array($latestState, ['running', 'succeeded', 'failed'], true);
+    $launcherAlive = dockerUpdatePidAlive($launchPid);
+    if ($spawnCode !== 0 || (!$started && !$launcherAlive)) {
+        $error = ['result' => 'error', 'exit_code' => 1, 'operation' => 'dockerupdate', 'timestamp' => date('c')];
+        try {
+            writePluginJson($dir . '/result.json', $error);
+            if (is_array($latest)) {
+                $latest['state'] = 'failed';
+                $latest['updatedAt'] = time();
+                $latest['message'] = '更新后台 worker 启动失败,未执行镜像拉取或容器重建';
+                writePluginJson($dir . '/status.json', $latest);
+            }
+        } catch (Throwable) {
+            // 启动失败仍以清理互斥锁和返回明确错误为主。
+        }
+        if (trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+        releaseDockerContainerLock($containerLock, $lockOwner);
+        $queued = true;
+        audit('dockerupdate', $name, 'fail');
+        fail(500, '更新后台 worker 启动失败,未执行更新');
+    }
     $queued = true;
+    audit('dockerupdate', $name, 'queued');
+    return ['async' => true, 'jobId' => $jobId, 'requestId' => $requestId];
 }
 
 // ==================== 普通 Docker 容器参数编辑 ====================
@@ -2716,7 +3012,7 @@ function startDockerEdit(array $body): string
     if (!is_file(DOCKER_EDIT_HELPER)) {
         fail(503, 'Unraid Docker Helpers.php 不存在,无法使用官方模板重建');
     }
-    if (file_exists(DOCKER_UPDATE_DIR . '/' . $name . '/op-lock')) {
+    if (readDockerUpdateStatus($name)['running'] === true) {
         fail(409, '该容器有镜像更新正在进行中,请等待完成');
     }
     ensureDockerEditDir();
@@ -2738,7 +3034,7 @@ function startDockerEdit(array $body): string
     $prepared = null;
     try {
         // 获取原子锁后再复核旧更新任务,兼容部署前已在运行的更新 worker。
-        if (file_exists(DOCKER_UPDATE_DIR . '/' . $name . '/op-lock')) {
+        if (readDockerUpdateStatus($name)['running'] === true) {
             fail(409, '该容器有镜像更新正在进行中,请等待完成');
         }
         $template = dockerEditTemplate($name);
@@ -4754,6 +5050,7 @@ function readCapabilities(): array
         'deps' => [
             'templateUserDir' => is_dir(TEMPLATE_USER_DIR) && is_writable(TEMPLATE_USER_DIR),
             'updateContainerScript' => is_file(DOCKER_UPDATE_SCRIPT),
+            'updateContainerSetsid' => is_executable(DOCKER_UPDATE_SETSID),
             'dockerEditHelper' => is_file(DOCKER_EDIT_HELPER),
             'dockerCli' => is_executable(DOCKER),
             'emcmd' => is_executable(EMCMD),
@@ -4943,7 +5240,7 @@ if ($method === 'GET') {
         ]);
     }
 
-    // 【续 147】docker 容器更新日志:进度/进行状态/结果一把全给(前端少一次往返)
+    // 更新状态由任务记录和真实进程组推导;旧字段 running/log/result 保持兼容。
     if ($action === 'dockerlog') {
         $name = (string) ($_GET['name'] ?? '');
         if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/', $name)) {
@@ -4953,10 +5250,21 @@ if ($method === 'GET') {
         if (!is_dir($dir)) {
             fail(404, '无更新记录: ' . $name);
         }
+        $rawRequestId = $_GET['requestId'] ?? null;
+        $requestId = $rawRequestId !== null ? dockerUpdateRequestId($rawRequestId) : null;
+        $status = readDockerUpdateStatus($name);
+        if ($requestId !== null && (!is_string($status['requestId'] ?? null)
+            || !hash_equals($requestId, $status['requestId']))) {
+            fail(409, '当前更新任务与原请求不匹配,请刷新状态后重试');
+        }
         ok([
+            'jobId' => $status['jobId'],
+            'requestId' => $status['requestId'],
+            'state' => $status['state'],
+            'message' => $status['message'],
             'log' => tailFile($dir . '/update.log'),
-            'running' => file_exists($dir . '/op-lock'),
-            'result' => readJsonFile($dir . '/result.json'),
+            'running' => $status['running'],
+            'result' => $status['result'],
         ]);
     }
 
@@ -5068,25 +5376,39 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
         ok(runDiskWake());
     }
 
-    // 【续 147】docker 容器更新(异步带 pull 进度;替代无进度的 GraphQL updateContainer)
+    // 普通 Docker 更新:异步任务、幂等恢复、容器身份与 Compose 归属复核。
     if ($action === 'dockerupdate') {
         $name = (string) ($body['name'] ?? '');
         if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/', $name)) {
             fail(400, '非法容器名');
         }
-        $noop = [];
-        $inspectCode = 1;
-        exec(PATH_ENV . ' ' . DOCKER . ' inspect ' . escapeshellarg($name) . ' >/dev/null 2>&1', $noop, $inspectCode);
-        if ($inspectCode !== 0) {
-            fail(404, '容器不存在: ' . $name);
+        $expectedId = dockerUpdateExpectedId($body['expectedId'] ?? null);
+        $requestId = dockerUpdateRequestId($body['requestId'] ?? null);
+        $dir = DOCKER_UPDATE_DIR . '/' . $name;
+        if (is_dir($dir)) {
+            $existing = readDockerUpdateStatus($name);
+            if (is_string($existing['requestId'] ?? null) && hash_equals($requestId, $existing['requestId'])) {
+                $raw = readJsonFile($dir . '/status.json');
+                $recordedExpected = strtolower((string) ($raw['expectedId'] ?? ''));
+                if ($expectedId !== null && $recordedExpected !== ''
+                    && !hash_equals($expectedId, $recordedExpected)) {
+                    fail(409, 'requestId 已用于另一个容器身份,不能重复提交');
+                }
+                ok([
+                    'async' => true,
+                    'jobId' => $existing['jobId'],
+                    'requestId' => $existing['requestId'],
+                    'duplicate' => true,
+                ]);
+            }
         }
-        // update_container 无模板会静默跳过(continue),提前 422 报清
+        $container = dockerUpdateContainer($name, $expectedId);
+        // update_container 无模板会静默跳过(continue),提前 422 报清。
         $tmpl = findUserTemplate($name);
         if ($tmpl === null) {
             fail(422, '该容器无 webGui 模板,无法用此方式更新(可走 Compose/命令行)');
         }
-        runDockerUpdateAsync($name, $tmpl);
-        ok(['async' => true]);
+        ok(runDockerUpdateAsync($name, $tmpl, $container, $expectedId, $requestId));
     }
 
     // 服务器电源(重启/关机):高危不可逆。严格白名单 + 审计先写 + nohup 异步下发,

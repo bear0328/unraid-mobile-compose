@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.6] - 2026-11-23
+
+### Security
+
+- Standalone Docker updates now carry `expectedId/requestId` and persistent job state. Identical requests recover the original job, while the server rechecks container identity, Compose ownership, runtime state, and template revision before and after pulling
+- Update workers run in a separate process group with atomic status and result writes. Orphaned locks are reclaimed only after the entire group exits, and an indeterminate terminal state is reported as `unknown` rather than false success or failure
+
+### Fixed
+
+- After timeouts, network failures, 5xx responses, or cancellation, the native app recovers with the original `requestId` instead of replaying PUT. Legacy-backend fallback, active-job conflicts, and identity/Compose conflicts are now strictly distinguished
+- Single and batch updates expose a neutral “outcome pending” state, so lost responses and final polling timeouts are not counted as successful or definitively failed updates
+
+### Changed
+
+- Existing clients, workers, and the original `log/running/result` response remain compatible; container parameter editing shares the same orphaned-job recovery
+- Coordinated with TestFlight 2.0.0 (133). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+## [TestFlight 2.0.0 (133)] - 2026-11-23
+
+### Fixed
+
+- Container details, multi-selection, and one-click updates now share Compose ownership decisions, preventing Compose-managed containers from entering the standalone Docker update path
+- Container logs now handle unavailable cursors, foreground/background lifecycle changes, and a 3,000-line retention limit. Lost update responses recover through the original request ID without repeating the update
+
+### Changed
+
+- The base container list appears first while update checks and icons load in parallel. State filtering now intersects with search, and rows use stable name/ID ordering
+- The multi-selection bar shows the visible selected count with large-text-friendly actions, the overview adds a Community Applications shortcut, and Compose details explain parameter-editing limitations
+- Update outcomes include a neutral pending state, with unknown results counted separately in batch summaries
+- Coordinated with Web/Docker v1.5.6 and the updated compose-api. **Re-run the host install script after upgrading**
+
 ## [1.5.5] - 2026-11-23
 
 ### Changed

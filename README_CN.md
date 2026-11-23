@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,17 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.6(2026-11-23)
+
+- 普通 Docker 更新新增请求 ID、幂等恢复、身份/Compose/模板复核与进程组异常锁回收；无法确认的结果明确返回 `unknown`
+- 与 TestFlight 2.0.0(133) 协调发布；**升级后需重跑宿主安装脚本**以部署新版 compose-api
+
+### TestFlight 2.0.0(133)(2026-11-23)
+
+- 统一详情、多选和一键更新的 Compose 归属；容器列表先显示再并行回填更新与图标，补齐稳定排序、真实筛选、CA 入口和编辑限制说明
+- 日志支持 cursor 降级、前后台恢复和 3000 行上限；更新响应丢失只按原请求 ID 恢复，不重复执行，并以中性“结果待确认”呈现未知结果
+- 与 Web/Docker v1.5.6 协调发布；**升级后需重跑宿主安装脚本**
 
 ### v1.5.5(2026-11-23)
 

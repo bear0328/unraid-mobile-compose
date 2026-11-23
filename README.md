@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,17 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.6 (2026-11-23)
+
+- Standalone Docker updates add request IDs, idempotent recovery, identity/Compose/template rechecks, and process-group orphan recovery; indeterminate outcomes are explicitly reported as `unknown`
+- Coordinated with TestFlight 2.0.0 (133). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+### TestFlight 2.0.0 (133) (2026-11-23)
+
+- Unifies Compose ownership across details, multi-selection, and updates; container rows appear before update/icon enrichment, with stable sorting, true filtering, a Community Applications shortcut, and editing-limit guidance
+- Logs add cursor fallback, lifecycle recovery, and a 3,000-line limit. Lost update responses recover by the original request ID without replay, with unknown outcomes shown as neutral “outcome pending”
+- Coordinated with Web/Docker v1.5.6. **Re-run the host install script after upgrading**
 
 ### v1.5.5 (2026-11-23)
 
