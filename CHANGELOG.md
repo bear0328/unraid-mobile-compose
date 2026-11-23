@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.5] - 2026-11-23
+
+### Changed
+
+- Web container selection is now entered explicitly, with consistent loading skeletons, filtered empty states, cached-data errors, and long-text layouts across containers, Compose, and VMs; the batch toolbar remains safe-area aware
+- Update tasks distinguish complete success, partial completion, and failure, collapse lengthy error details by default, and report batch execution versus image updates accurately
+- Coordinated with TestFlight 2.0.0 (132). **Re-run the host install script after upgrading** to align compose-api release metadata
+
+## [TestFlight 2.0.0 (132)] - 2026-11-23
+
+### Fixed
+
+- Container and VM batch controls now use the system safe area instead of overlapping the floating iOS 26 tab bar; filtered empty states are no longer obscured by the tab bar
+- Refresh errors and cached-data context remain visible when filtering returns no rows, and batch actions target only visible rows that remain selected
+
+### Changed
+
+- The existing container/Compose/VM selection menu is retained, with improved narrow-screen layouts for long Compose names, mixed states, failure records, and VM UUIDs
+- Update tasks distinguish complete success, partial completion, and total failure, collapse lengthy error details, and honor Reduce Motion for explicit animations
+- Coordinated with Web/Docker v1.5.5. **Re-run the host install script after upgrading** to align compose-api release metadata
+
 ## [1.5.4] - 2026-11-23
 
 ### Fixed

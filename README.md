@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,17 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.5 (2026-11-23)
+
+- Web containers now use explicit multi-selection, consistent loading, empty, cached-error, and long-text layouts, with update results accurately separated into success, partial completion, and failure
+- Coordinated with TestFlight 2.0.0 (132). **Re-run the host install script after upgrading** to align compose-api release metadata
+
+### TestFlight 2.0.0 (132) (2026-11-23)
+
+- Retains the container/Compose/VM selection menu while fixing overlap with the floating iOS 26 tab bar and obscured filtered empty states
+- Improves cached errors, long Compose text, VM UUIDs, update outcomes, collapsible failure details, and Reduce Motion behavior
+- Coordinated with Web/Docker v1.5.5. **Re-run the host install script after upgrading** to align compose-api release metadata
 
 ### v1.5.4 (2026-11-23)
 

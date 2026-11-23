@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.5/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,17 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.5(2026-11-23)
+
+- Web 容器页改为显式多选，统一加载骨架、筛选空态、缓存错误与长文本布局，更新任务准确区分成功、部分完成和失败
+- 与 TestFlight 2.0.0(132) 协调发布；**升级后需重跑宿主安装脚本**以同步 compose-api 发布版本元数据
+
+### TestFlight 2.0.0(132)(2026-11-23)
+
+- 保留容器/Compose 栈/虚拟机选择菜单，修复 iOS 26 多选操作栏与悬浮 Tab 栏叠层，以及筛选无结果提示被遮挡的问题
+- 优化缓存错误、Compose 长文本、VM UUID、更新结果与失败明细展示，并遵循系统“减少动态效果”设置
+- 与 Web/Docker v1.5.5 协调发布；**升级后需重跑宿主安装脚本**以同步 compose-api 发布版本元数据
 
 ### v1.5.4(2026-11-23)
 
