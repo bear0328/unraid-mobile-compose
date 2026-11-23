@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.9] - 2026-11-23
+
+### Added
+
+- Native one-click updates now cover every updatable Docker container: standalone containers, compose.manager stacks, and external Compose projects such as `videodock`. External projects are discovered from live Docker labels and updated once per project with their original project name, working directory, and ordered Compose files
+- Update confirmation separately lists standalone containers, compose.manager projects, and external Compose projects with their pending members. Compose projects clearly warn that other services in the same project may also restart
+- External Compose updates add project-level asynchronous jobs, progress logs, request-ID recovery, active-job attachment, and immediate update-badge refresh using the complete Compose configuration
+
+### Security
+
+- External Compose updates never fall back to standalone container updates. The server derives project paths from live labels, validates the expected container ID and Compose specification before and after pulling, and rejects client-supplied paths or commands
+- Project locks remain held while queued workers cannot be proven to have exited. Discovery failures stop update preparation instead of misclassifying Compose containers as standalone, and indeterminate outcomes remain `unknown`
+
+### Changed
+
+- Coordinated with TestFlight 2.0.0 (137). **Re-run the host install script after upgrading** to deploy the new external Compose API and update-status support
+
+## [TestFlight 2.0.0 (137)] - 2026-11-23
+
+### Added
+
+- “Update All” and selected-container updates now include standalone Docker, compose.manager, and external Compose containers, with a categorized pre-update list and one execution per Compose project
+- Container details update the owning external Compose project instead of offering an invalid standalone update. Progress, logs, success/failure/pending summaries, and job reattachment use the same project classification
+
+### Fixed
+
+- Active external Compose jobs can be reattached by project even while their anchor container is being recreated; jobs that finish during reattachment return their real terminal result
+- Coordinated with Web/Docker and compose-api v1.5.9. **Re-run the host install script after upgrading**
+
 ## [1.5.8] - 2026-11-23
 
 ### Fixed

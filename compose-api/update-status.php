@@ -8,8 +8,10 @@
  * 成功项每天复查、失败项 5 分钟后重试,避免 HTTP 轮询同步等待 Registry。
  * 单个镜像查询失败不影响其他镜像;无远端 digest 时不判定有无更新。
  *
- * 用法: php update-status.php <stack_dir>     — compose 栈(pull/rebuild 后)
+ * 用法: php update-status.php <stack_dir>     — compose.manager 栈(pull/rebuild 后)
  *       php update-status.php --image <ref>   — 单镜像容器更新后
+ *       php update-status.php --compose <project> <working_dir> <config_file>...
+ *                                               — 外部 Compose,保留项目与多配置文件参数
  *       php update-status.php --scan          — 独立复查全部当前镜像
  * 无参数 / 无镜像 → 静默 exit 0;主缓存缺失或损坏时仍同步补充缓存(绝不影响主流程)
  */
@@ -146,7 +148,24 @@ if ($argv[1] === '--scan') {
 }
 
 $images = [];
-if ($argv[1] === '--image') {
+if ($argv[1] === '--compose') {
+    // 外部 Compose 不能只 cd 到目录:项目名、工作目录和多份 -f 必须与更新任务一致。
+    $project = (string) ($argv[2] ?? '');
+    $workingDir = (string) ($argv[3] ?? '');
+    $files = array_slice($argv, 4);
+    if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,127}$/D', $project)
+        || !str_starts_with($workingDir, '/') || $files === [] || count($files) > 32) {
+        exit(0);
+    }
+    $command = '/usr/bin/docker compose --project-name ' . escapeshellarg($project)
+        . ' --project-directory ' . escapeshellarg($workingDir);
+    foreach ($files as $file) {
+        if (!is_string($file) || !str_starts_with($file, '/')) exit(0);
+        $command .= ' -f ' . escapeshellarg($file);
+    }
+    exec($command . ' config --images 2>/dev/null', $images);
+    $images = array_values(array_filter(array_map('trim', $images)));
+} elseif ($argv[1] === '--image') {
     // 【续 147】单镜像模式:ref 为空静默退出
     $one = trim((string) ($argv[2] ?? ''));
     if ($one !== '') {

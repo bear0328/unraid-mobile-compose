@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.9/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.9/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,12 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.9(2026-11-23)
+
+- 原生一键更新覆盖普通 Docker、compose.manager 栈与外部 Compose 项目，更新前提供分类名单，同一 Compose 项目保留原配置且只更新一次
+- 新增安全的外部 Compose 发现、项目级异步任务、请求 ID 恢复、进度日志和更新徽章即时刷新；外部 Compose 绝不降级为普通容器更新
+- 与 TestFlight 2.0.0(137) 协调发布；**升级后需重跑宿主安装脚本**以部署新版 compose-api 接口
 
 ### v1.5.8(2026-11-23)
 

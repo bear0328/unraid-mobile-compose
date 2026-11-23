@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.9/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.9/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,12 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.9 (2026-11-23)
+
+- Native one-click updates now cover standalone Docker, compose.manager stacks, and external Compose projects, with a categorized confirmation and one update per Compose project using its original configuration
+- Adds secure external Compose discovery, project-level asynchronous jobs, request-ID recovery, progress logs, and immediate update-badge refresh. External Compose never falls back to standalone container updates
+- Coordinated with TestFlight 2.0.0 (137). **Re-run the host install script after upgrading** to deploy the new compose-api endpoints
 
 ### v1.5.8 (2026-11-23)
 

@@ -59,6 +59,11 @@ declare(strict_types=1);
  *                                         普通容器异步更新;服务端复核 ID/Compose/模板并支持幂等恢复
  *   GET  ?action=dockerlog&name=X&requestId=X
  *                                         更新任务 jobId/state/running/log/result;异常退出不冒充确定失败
+ *   GET  ?action=externalprojects          非 compose.manager 的 Compose 项目与容器名
+ *   PUT  {action:externalupdate,name,expectedId,requestId}
+ *                                         外部 Compose 项目异步 pull + 重建;路径只取实时容器标签
+ *   GET  ?action=externalupdatelog&requestId=X  或 &project=X
+ *                                         外部更新任务状态;支持 requestId 恢复与项目级附着
  *   PUT  {action:cainstall,templateUrl,values}
  *                                          重新校验 feed 与模板,仅新容器;以 CA 模板直写用户模板
  *                                          my-<name>.xml(不再伪造 $_POST/include CreateDocker.php),
@@ -87,7 +92,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.8';
+const APP_VERSION = '1.5.9';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -133,6 +138,7 @@ const DOCKER_UPDATE_DIR = '/tmp/unraid-mobile-dockerupdate';
 const DOCKER_UPDATE_SCRIPT = '/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container';
 const DOCKER_UPDATE_SETSID = '/usr/bin/setsid';
 const DOCKER_UPDATE_START_GRACE_SEC = 30;
+const EXTERNAL_UPDATE_DIR = '/tmp/unraid-mobile-externalupdate';
 const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
 const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
@@ -188,11 +194,12 @@ const PRO_GET_ACTIONS = [
     'cputemp', 'vminfo', 'vmstats', 'vmlog',
     'plugins', 'pluginjob', 'caapps', 'catemplate', 'cajob',
     'dockertemplate', 'dockereditjob', 'list', 'get', 'log', 'dockerlog',
+    'externalprojects', 'externalupdatelog',
 ];
 const PRO_PUT_ACTIONS = [
     'plugincheck', 'pluginupdate', 'pluginremove', 'pluginupdateall', 'plugininstall',
     'cainstall', 'dockeredit', 'autostart', 'indexcfg', 'reindex',
-    'dockerupdate', 'serverpower', 'up', 'down', 'restart', 'pull', 'rebuild',
+    'dockerupdate', 'externalupdate', 'serverpower', 'up', 'down', 'restart', 'pull', 'rebuild',
 ];
 const DISK_WAKE_LOCK_FILE = '/tmp/unraid-mobile-diskwake.lock';
 const EMCMD = '/usr/local/sbin/emcmd';
@@ -345,23 +352,31 @@ function composeLsMap(): array
  * 会让前端「更新」徽章的前缀匹配失配。单次 docker ps -a(含停止的容器),
  * 失败返回空数组静默降级(前端回退前缀启发式)。
  */
-function projectContainersMap(?array &$serviceMap = null): array
+function projectContainersMap(?array &$serviceMap = null, ?array &$workingDirMap = null, bool $strict = false): array
 {
     $out = [];
+    $code = 0;
     exec(
         PATH_ENV . ' ' . DOCKER
         . ' ps -a --filter label=com.docker.compose.project'
-        . " --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}' 2>/dev/null",
-        $out
+        . " --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}|{{.Label \"com.docker.compose.project.working_dir\"}}' 2>/dev/null",
+        $out,
+        $code
     );
+    // 普通列表保留旧静默降级；更新前归属确认必须区分“无项目”和“发现失败”。
+    if ($strict && $code !== 0) fail(503, '无法读取 Compose 容器归属,已取消更新准备');
     $map = [];
     $serviceMap = [];
+    $workingDirMap = [];
     foreach ($out as $line) {
-        $parts = explode('|', trim($line), 3);
-        if (count($parts) === 3 && $parts[0] !== '' && $parts[1] !== '') {
+        $parts = explode('|', trim($line), 4);
+        if (count($parts) === 4 && $parts[0] !== '' && $parts[1] !== '') {
             $map[$parts[1]][] = $parts[0];
             if ($parts[2] !== '') {
                 $serviceMap[$parts[1]][$parts[0]] = $parts[2];
+            }
+            if ($parts[3] !== '') {
+                $workingDirMap[$parts[1]][$parts[0]] = $parts[3];
             }
         }
     }
@@ -1815,6 +1830,55 @@ function stackSummary(
     ];
 }
 
+/** compose.manager 当前目录对应的规范化项目名;目录扫描失败时保守返回空列表。 */
+function composeManagerProjectNames(): array
+{
+    $names = [];
+    foreach (@scandir(PROJECTS_DIR) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..' || !is_dir(PROJECTS_DIR . '/' . $entry)) continue;
+        $project = projectName($entry);
+        if ($project !== '') $names[$project] = true;
+    }
+    return array_keys($names);
+}
+
+/** 列表仅做文本归属判断,不 realpath 外部目录;更新前会另行规范化并复核路径。 */
+function composeManagerPath(string $workingDir): bool
+{
+    if ($workingDir === '') return false;
+    $root = realpath(PROJECTS_DIR);
+    $root = rtrim(is_string($root) ? $root : PROJECTS_DIR, '/');
+    $path = rtrim($workingDir, '/');
+    return $path === $root || str_starts_with($path, $root . '/');
+}
+
+function externalProjectIsManaged(string $project, array $workingDirs = []): bool
+{
+    if (in_array($project, composeManagerProjectNames(), true)) return true;
+    foreach ($workingDirs as $workingDir) {
+        if (is_string($workingDir) && composeManagerPath($workingDir)) return true;
+    }
+    return false;
+}
+
+/** 每个 Compose project 只返回一次;manager 项目名或 manager 路径均排除。 */
+function externalProjects(): array
+{
+    $serviceMap = [];
+    $workingDirMap = [];
+    $map = projectContainersMap($serviceMap, $workingDirMap, true);
+    $projects = [];
+    foreach ($map as $project => $containers) {
+        if (!is_string($project) || $project === ''
+            || externalProjectIsManaged($project, $workingDirMap[$project] ?? [])) continue;
+        $containers = array_values(array_unique(array_filter($containers, 'is_string')));
+        sort($containers, SORT_NATURAL | SORT_FLAG_CASE);
+        $projects[] = ['project' => $project, 'containers' => $containers];
+    }
+    usort($projects, static fn(array $a, array $b): int => strnatcasecmp($a['project'], $b['project']));
+    return $projects;
+}
+
 /**
  * 同步执行 docker compose 子命令,输出落 last_cmd.log,结果落 last_result.json
  * (与 compose.manager 插件的文件约定保持一致,插件 UI 里也能看到)
@@ -2100,10 +2164,9 @@ function readDockerUpdateStatus(string $name): array
     }
 
     if ($state === 'queued' && (int) ($status['pid'] ?? 0) <= 0) {
-        $createdAt = (int) ($status['createdAt'] ?? 0);
-        if ($lockExists && $createdAt > 0 && time() - $createdAt <= DOCKER_UPDATE_START_GRACE_SEC) {
-            $alive = true;
-        }
+        // worker 启动后才回写 PID/PGID；此间无进程可查，但 op-lock 已生效。
+        // 不按宽限期猜死放锁，避免同容器/项目被并发执行。
+        if ($lockExists) $alive = true;
     } elseif ($alive === null && $lockExists) {
         // 无法读取进程信息时 fail closed,不因为猜测而释放互斥锁。
         $alive = true;
@@ -2336,6 +2399,474 @@ function runDockerUpdateAsync(string $name, string $tmpl, array $container,
     $queued = true;
     audit('dockerupdate', $name, 'queued');
     return ['async' => true, 'jobId' => $jobId, 'requestId' => $requestId];
+}
+
+// ==================== 外部 Compose 项目更新 ====================
+
+function externalUpdateReleaseLock(string $dir, string $jobId): void
+{
+    $path = $dir . '/op-lock';
+    if (trim((string) @file_get_contents($path)) === $jobId) @unlink($path);
+}
+
+/** 与普通更新共用进程组判定;项目目录就是同项目所有锚点容器的互斥锁。 */
+function readExternalUpdateStatus(string $project): array
+{
+    $dir = EXTERNAL_UPDATE_DIR . '/' . $project;
+    $status = readJsonFile($dir . '/status.json');
+    $result = readJsonFile($dir . '/result.json');
+    $lockExists = file_exists($dir . '/op-lock');
+    if (!is_array($status) || !preg_match('/^[a-f0-9]{32}$/D', (string) ($status['id'] ?? ''))) {
+        $running = $lockExists && $result === null;
+        return [
+            'jobId' => null,
+            'requestId' => null,
+            'state' => $result !== null ? (($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed')
+                : ($running ? 'running' : 'unknown'),
+            'running' => $running,
+            'result' => $result,
+            'message' => null,
+        ];
+    }
+
+    $jobId = (string) $status['id'];
+    $state = (string) ($status['state'] ?? 'queued');
+    $requestId = (string) ($status['requestId'] ?? '');
+    $terminal = in_array($state, ['succeeded', 'failed', 'unknown'], true);
+    $alive = dockerUpdateProcessGroupAlive($status);
+    if ($terminal) {
+        if ($alive === false) externalUpdateReleaseLock($dir, $jobId);
+        return [
+            'jobId' => $jobId,
+            'requestId' => $requestId !== '' ? $requestId : null,
+            'state' => $state,
+            'running' => false,
+            'result' => $result,
+            'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+        ];
+    }
+    if ($state === 'queued' && (int) ($status['pid'] ?? 0) <= 0) {
+        // worker 启动后才回写 PID/PGID；此间无进程可查，但 op-lock 已生效。
+        // 不按宽限期猜死放锁，避免同容器/项目被并发执行。
+        if ($lockExists) $alive = true;
+    } elseif ($alive === null && $lockExists) {
+        $alive = true;
+    }
+    if ($alive === true) {
+        return [
+            'jobId' => $jobId,
+            'requestId' => $requestId !== '' ? $requestId : null,
+            'state' => $state === 'queued' ? 'queued' : 'running',
+            'running' => true,
+            'result' => $result,
+            'message' => null,
+        ];
+    }
+    if (is_array($result)) {
+        $state = ($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed';
+        $status['state'] = $state;
+        $status['updatedAt'] = time();
+        writePluginJson($dir . '/status.json', $status);
+    } else {
+        $state = 'unknown';
+        $status['state'] = 'unknown';
+        $status['updatedAt'] = time();
+        $status['message'] = '外部 Compose 更新进程已异常退出,无法确认 pull 或项目重建结果;请检查日志与容器状态后再操作';
+        writePluginJson($dir . '/status.json', $status);
+    }
+    externalUpdateReleaseLock($dir, $jobId);
+    return [
+        'jobId' => $jobId,
+        'requestId' => $requestId !== '' ? $requestId : null,
+        'state' => $state,
+        'running' => false,
+        'result' => is_array($result) ? $result : null,
+        'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+    ];
+}
+
+/** requestId 全局定位任务,恢复发生在重新 inspect 之前,成功重建换 ID 后仍可附着。 */
+function externalUpdateFindByRequestId(string $requestId): ?array
+{
+    $found = null;
+    foreach (glob(EXTERNAL_UPDATE_DIR . '/*/status.json') ?: [] as $path) {
+        $project = basename(dirname($path));
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,127}$/D', $project)) continue;
+        $raw = readJsonFile($path);
+        if (!is_array($raw) || ($raw['project'] ?? null) !== $project
+            || !is_string($raw['requestId'] ?? null)
+            || !hash_equals($requestId, $raw['requestId'])) continue;
+        if ($found !== null) fail(409, 'requestId 对应多个外部更新任务,请检查服务端任务目录');
+        $found = [
+            'project' => $project,
+            'dir' => dirname($path),
+            'raw' => $raw,
+            'status' => readExternalUpdateStatus($project),
+        ];
+    }
+    return $found;
+}
+
+/** 409 附着时按当前锚点容器定位项目；不同锚点也能接回同一项目的活动任务。 */
+function externalUpdateProjectForContainer(string $name): string
+{
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/D', $name)) {
+        fail(400, '非法容器名');
+    }
+    $lines = [];
+    $code = 1;
+    $format = '{{.Id}}|{{.State.Status}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project.working_dir"}}{{.}}{{end}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project.config_files"}}{{.}}{{end}}';
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' inspect --format ' . escapeshellarg($format)
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null',
+        $lines,
+        $code
+    );
+    if ($code !== 0) fail(404, '容器不存在: ' . $name);
+    $parts = explode('|', trim((string) ($lines[0] ?? '')));
+    if (count($parts) !== 5) fail(422, '容器 Compose 标签格式无效');
+    $project = $parts[2];
+    $workingDir = $parts[3];
+    if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,127}$/D', $project)) {
+        fail(422, '容器不属于有效的外部 Compose 项目');
+    }
+    if (externalProjectIsManaged($project, [$workingDir])) {
+        fail(409, 'compose.manager 项目请使用所属栈日志');
+    }
+    return $project;
+}
+
+/** 只接受已存在且未解析软链的绝对路径,worker 在 pull 后再次执行同样检查。 */
+function externalComposePath(string $path, bool $directory): string
+{
+    if ($path === '' || strlen($path) > 4096 || !str_starts_with($path, '/')
+        || preg_match('/[\x00-\x1F\x7F|]/', $path)) {
+        fail(422, 'Compose working_dir/config_files 必须是受限制的绝对路径');
+    }
+    $real = realpath($path);
+    if (!is_string($real) || !hash_equals($path, $real)
+        || ($directory ? !is_dir($real) : !is_file($real))) {
+        fail(422, 'Compose 路径不存在、类型错误或包含软链,已取消更新');
+    }
+    return $real;
+}
+
+/** 实时 inspect 锚点;所有 Compose 参数只来自服务端标签,不接收客户端路径或命令。 */
+function externalComposeSpec(string $name, string $expectedId): array
+{
+    $lines = [];
+    $code = 1;
+    $format = '{{.Id}}|{{.State.Status}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project.working_dir"}}{{.}}{{end}}'
+        . '|{{with index .Config.Labels "com.docker.compose.project.config_files"}}{{.}}{{end}}';
+    exec(
+        PATH_ENV . ' ' . DOCKER . ' inspect --format ' . escapeshellarg($format)
+        . ' ' . escapeshellarg($name) . ' 2>/dev/null',
+        $lines,
+        $code
+    );
+    if ($code !== 0) fail(404, '容器不存在: ' . $name);
+    $parts = explode('|', rtrim((string) ($lines[0] ?? ''), "\r\n"));
+    if (count($parts) !== 5) fail(422, '容器 Compose 标签格式无效,已取消更新');
+    [$id, $status, $project, $workingDir, $configFiles] = $parts;
+    $id = strtolower($id);
+    if (!preg_match('/^[a-f0-9]{64}$/D', $id)) fail(503, '无法确认容器身份,已取消更新');
+    if (!hash_equals($expectedId, $id)) fail(409, '容器已被外部替换,请刷新列表后重新确认更新');
+    if (in_array(strtolower($status), ['paused', 'restarting', 'removing'], true)) {
+        fail(409, '容器当前状态不适合更新,请先恢复运行或停止');
+    }
+    if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,127}$/D', $project)) {
+        fail(422, '容器不属于有效的外部 Compose 项目');
+    }
+    $workingDir = externalComposePath($workingDir, true);
+    if (externalProjectIsManaged($project, [$workingDir])) {
+        fail(409, 'compose.manager 项目请使用所属栈更新');
+    }
+    if ($configFiles === '' || strlen($configFiles) > 32768) {
+        fail(422, 'Compose config_files 标签缺失或过长');
+    }
+    $files = explode(',', $configFiles);
+    if (count($files) > 32) fail(422, 'Compose 配置文件数量超过上限');
+    foreach ($files as &$file) {
+        if ($file === '' || trim($file) !== $file || str_contains($file, ',')) {
+            fail(422, 'Compose config_files 含无效路径');
+        }
+        $file = externalComposePath($file, false);
+    }
+    unset($file);
+    if ($files === []) fail(422, 'Compose config_files 标签为空');
+    return [
+        'id' => $id,
+        'name' => $name,
+        'project' => $project,
+        'workingDir' => $workingDir,
+        'configFiles' => $files,
+        'spec' => implode('|', [$id, $project, $workingDir, implode(',', $files)]),
+    ];
+}
+
+/** 生成项目级独立进程组任务;pull 与 up 使用完全相同且保序的 Compose 参数。 */
+function externalUpdateJobScript(array $job): string
+{
+    $jobId = (string) $job['id'];
+    $fileArgs = '';
+    $pathArgs = escapeshellarg((string) $job['workingDir']);
+    foreach ($job['configFiles'] as $file) {
+        $fileArgs .= ' -f ' . escapeshellarg((string) $file);
+        $pathArgs .= ' ' . escapeshellarg((string) $file);
+    }
+    return '#!/bin/sh' . "\n"
+        . 'set -u' . "\n"
+        . 'opLock=' . escapeshellarg((string) $job['dir'] . '/op-lock') . "\n"
+        . 'statusPath=' . escapeshellarg((string) $job['dir'] . '/status.json') . "\n"
+        . 'resultPath=' . escapeshellarg((string) $job['dir'] . '/result.json') . "\n"
+        . 'jobId=' . escapeshellarg($jobId) . "\n"
+        . 'requestId=' . escapeshellarg((string) $job['requestId']) . "\n"
+        . 'createdAt=' . (int) $job['createdAt'] . "\n"
+        . 'name=' . escapeshellarg((string) $job['name']) . "\n"
+        . 'project=' . escapeshellarg((string) $job['project']) . "\n"
+        . 'workingDir=' . escapeshellarg((string) $job['workingDir']) . "\n"
+        . 'expectedId=' . escapeshellarg((string) $job['expectedId']) . "\n"
+        . 'expectedSpec=' . escapeshellarg((string) $job['spec']) . "\n"
+        . 'specHash=' . escapeshellarg(hash('sha256', (string) $job['spec'])) . "\n"
+        . 'dockerBin=' . escapeshellarg(DOCKER) . "\n"
+        . 'setsidBin=' . escapeshellarg(DOCKER_UPDATE_SETSID) . "\n"
+        . 'updateStatusScript=' . escapeshellarg(__DIR__ . '/update-status.php') . "\n"
+        . 'auditLog=' . escapeshellarg(AUDIT_LOG) . "\n"
+        . 'requestIp=' . escapeshellarg((string) $job['ip']) . "\n"
+        . 'if [ "${1:-}" != "--start" ] || [ "${2:-}" != "$jobId" ]; then exit 64; fi' . "\n"
+        . 'if [ "${3:-}" != "--grouped" ]; then exec "$setsidBin" /bin/sh "$0" --start "$jobId" --grouped; fi' . "\n"
+        . 'cd ' . escapeshellarg((string) $job['dir']) . ' || exit 1' . "\n"
+        . 'exec > update.log 2>&1' . "\n"
+        . 'write_state() {' . "\n"
+        . '  state="$1"; statRest="$(sed "s/.*) //" "/proc/$$/stat" 2>/dev/null)"' . "\n"
+        . '  set -- $statRest; pgid="${3:-0}"; started="${20:-}"; tmp="$statusPath.tmp.$$"' . "\n"
+        . '  printf \'%s\n\' "{\"id\":\"$jobId\",\"name\":\"$name\",\"project\":\"$project\",\"requestId\":\"$requestId\",\"expectedId\":\"$expectedId\",\"specHash\":\"$specHash\",\"createdAt\":$createdAt,\"updatedAt\":$(date +%s),\"pid\":$$,\"pgid\":${pgid:-0},\"startedTicks\":\"${started:-}\",\"state\":\"$state\"}" > "$tmp" && mv -f "$tmp" "$statusPath"' . "\n"
+        . '}' . "\n"
+        . 'write_result() {' . "\n"
+        . '  ec="$1"; [ "$ec" -eq 0 ] && result=success || result=error; tmp="$resultPath.tmp.$$"' . "\n"
+        . '  printf \'{"result":"%s","exit_code":%d,"operation":"externalupdate","timestamp":"%s"}\' "$result" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > "$tmp" && mv -f "$tmp" "$resultPath"' . "\n"
+        . '}' . "\n"
+        . 'cleanup() {' . "\n"
+        . '  if [ -f "$opLock" ] && [ "$(cat "$opLock")" = "$jobId" ]; then rm -f "$opLock"; fi' . "\n"
+        . '}' . "\n"
+        . 'trap cleanup EXIT' . "\n"
+        . 'write_state running' . "\n"
+        . 'assert_identity() {' . "\n"
+        . '  line="$("$dockerBin" inspect --format \'{{.Id}}|{{.State.Status}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}|{{with index .Config.Labels "com.docker.compose.project.working_dir"}}{{.}}{{end}}|{{with index .Config.Labels "com.docker.compose.project.config_files"}}{{.}}{{end}}\' "$name" 2>/dev/null)" || return 1' . "\n"
+        . '  currentStatus="$(printf \'%s\n\' "$line" | cut -d\'|\' -f2)"' . "\n"
+        . '  currentSpec="$(printf \'%s\n\' "$line" | cut -d\'|\' -f1,3-)"' . "\n"
+        . '  [ "$currentSpec" = "$expectedSpec" ] || { echo "!! 锚点 ID 或 Compose project/working_dir/config_files 已变化,已中止"; return 1; }' . "\n"
+        . '  case "$(printf %s "$currentStatus" | tr "[:upper:]" "[:lower:]")" in paused|restarting|removing) echo "!! 容器状态已变化,已中止"; return 1;; esac' . "\n"
+        . '  /usr/bin/php -r \'$paths = array_slice($argv, 1); foreach ($paths as $index => $path) { $real = realpath($path); if (!is_string($real) || $real !== $path || ($index === 0 ? !is_dir($real) : !is_file($real))) exit(1); }\' -- ' . $pathArgs . ' || { echo "!! Compose 路径已变化或失效,已中止"; return 1; }' . "\n"
+        . '}' . "\n"
+        . 'run_compose() {' . "\n"
+        . '  "$dockerBin" compose --project-name "$project" --project-directory "$workingDir"' . $fileArgs . ' "$@"' . "\n"
+        . '}' . "\n"
+        . 'ec=0' . "\n"
+        . 'if ! assert_identity; then ec=75; fi' . "\n"
+        . 'echo "[$(date +%H:%M:%S)] 更新外部 Compose 项目 $project(锚点 $name)"' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then echo; echo "== Compose pull =="; run_compose pull || ec=$?; fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then assert_identity || ec=75; fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then echo; echo "== Compose up =="; run_compose up -d --build --force-recreate || ec=$?; fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then echo; echo "== 更新完成,正在刷新更新徽章 =="; '
+        . '/usr/bin/php "$updateStatusScript" --compose ' . escapeshellarg((string) $job['project']) . ' ' . $pathArgs . ' >/dev/null 2>&1; fi' . "\n"
+        . 'case "$ec" in \'\'|*[!0-9]*) ec=1;; esac' . "\n"
+        . 'write_result "$ec"' . "\n"
+        . '[ "$ec" -eq 0 ] && write_state succeeded || write_state failed' . "\n"
+        . 'printf \'[%s] action=externalupdate stack=%s result=%s ip=%s\n\' "$(date +%Y-%m-%dT%H:%M:%S%z)" "$project" "$([ "$ec" -eq 0 ] && echo ok || echo fail)" "$requestIp" >> "$auditLog"' . "\n"
+        . 'exit "$ec"' . "\n";
+}
+
+function runExternalUpdateAsync(array $spec, string $requestId): array
+{
+    if (!is_executable(DOCKER_UPDATE_SETSID)) fail(503, '宿主缺少 setsid,无法安全跟踪更新任务');
+    $project = (string) $spec['project'];
+    $name = (string) $spec['name'];
+    $dir = EXTERNAL_UPDATE_DIR . '/' . $project;
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) fail(500, '外部更新工作目录创建失败');
+    @chmod($dir, 0700);
+    $existing = readExternalUpdateStatus($project);
+    if ($existing['running'] === true) {
+        $raw = readJsonFile($dir . '/status.json');
+        if (is_string($existing['requestId'] ?? null) && hash_equals($requestId, $existing['requestId'])
+            && ($raw['name'] ?? null) === $name
+            && strtolower((string) ($raw['expectedId'] ?? '')) === $spec['id']) {
+            return ['async' => true, 'jobId' => $existing['jobId'], 'requestId' => $requestId, 'duplicate' => true];
+        }
+        audit('externalupdate', $project, 'fail');
+        fail(409, '该 Compose 项目有更新正在进行中,同项目容器不能并发更新');
+    }
+
+    $jobId = bin2hex(random_bytes(16));
+    $queued = false;
+    $opOwned = false;
+    $lockFile = $dir . '/op-lock';
+    register_shutdown_function(static function () use (&$queued, &$opOwned, $lockFile, $jobId): void {
+        if (!$queued && $opOwned && trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+    });
+    $lock = @fopen($lockFile, 'x');
+    if ($lock === false) {
+        audit('externalupdate', $project, 'fail');
+        fail(409, '该 Compose 项目有更新正在进行中,同项目容器不能并发更新');
+    }
+    if (@fwrite($lock, $jobId) === false) {
+        @fclose($lock);
+        @unlink($lockFile);
+        fail(500, '外部更新项目锁写入失败');
+    }
+    fclose($lock);
+    $opOwned = true;
+    $createdAt = time();
+    $job = [
+        'id' => $jobId,
+        'name' => $name,
+        'project' => $project,
+        'dir' => $dir,
+        'requestId' => $requestId,
+        'createdAt' => $createdAt,
+        'workingDir' => $spec['workingDir'],
+        'configFiles' => $spec['configFiles'],
+        'expectedId' => $spec['id'],
+        'spec' => $spec['spec'],
+        'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? '-'),
+    ];
+    try {
+        @unlink($dir . '/result.json');
+        writePluginJson($dir . '/status.json', [
+            'id' => $jobId,
+            'name' => $name,
+            'project' => $project,
+            'requestId' => $requestId,
+            'expectedId' => $spec['id'],
+            'specHash' => hash('sha256', (string) $spec['spec']),
+            'createdAt' => $createdAt,
+            'updatedAt' => $createdAt,
+            'pid' => 0,
+            'pgid' => 0,
+            'startedTicks' => '',
+            'state' => 'queued',
+        ]);
+        $script = $dir . '/job.sh';
+        if (@file_put_contents($script, externalUpdateJobScript($job), LOCK_EX) === false) {
+            throw new RuntimeException('外部更新任务脚本写入失败');
+        }
+        @chmod($script, 0700);
+        @file_put_contents($dir . '/update.log', '', LOCK_EX);
+    } catch (Throwable $e) {
+        fail(500, $e->getMessage());
+    }
+
+    $spawnOutput = [];
+    $spawnCode = 1;
+    exec(PATH_ENV . ' nohup /bin/sh ' . escapeshellarg($script)
+        . ' --start ' . escapeshellarg($jobId) . ' > /dev/null 2>&1 < /dev/null & echo $!',
+        $spawnOutput, $spawnCode);
+    usleep(150000);
+    $launchPid = (int) end($spawnOutput);
+    $latest = readJsonFile($dir . '/status.json');
+    $latestState = is_array($latest) ? (string) ($latest['state'] ?? '') : '';
+    $started = in_array($latestState, ['running', 'succeeded', 'failed'], true);
+    $launcherAlive = dockerUpdatePidAlive($launchPid);
+    if ($spawnCode !== 0 || (!$started && !$launcherAlive)) {
+        $error = ['result' => 'error', 'exit_code' => 1, 'operation' => 'externalupdate', 'timestamp' => date('c')];
+        try {
+            writePluginJson($dir . '/result.json', $error);
+            if (is_array($latest)) {
+                $latest['state'] = 'failed';
+                $latest['updatedAt'] = time();
+                $latest['message'] = '外部更新后台 worker 启动失败,未执行 pull 或项目重建';
+                writePluginJson($dir . '/status.json', $latest);
+            }
+        } catch (Throwable) {
+            // 启动失败仍以释放项目锁和返回明确错误为主。
+        }
+        if (trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+        $queued = true;
+        audit('externalupdate', $project, 'fail');
+        fail(500, '外部更新后台 worker 启动失败,未执行更新');
+    }
+    $queued = true;
+    audit('externalupdate', $project, 'queued');
+    return ['async' => true, 'jobId' => $jobId, 'requestId' => $requestId];
+}
+
+function startExternalUpdate(array $body): array
+{
+    foreach (array_keys($body) as $key) {
+        if (!in_array($key, ['action', 'name', 'expectedId', 'requestId'], true)) {
+            fail(400, 'externalupdate 只接受 action/name/expectedId/requestId,路径与命令由服务端实时读取');
+        }
+    }
+    $name = $body['name'] ?? null;
+    if (!is_string($name) || !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/D', $name)) {
+        fail(400, '非法容器名');
+    }
+    $expectedId = dockerUpdateExpectedId($body['expectedId'] ?? null);
+    if ($expectedId === null) fail(400, 'externalupdate 必须提供 expectedId');
+    if (!isset($body['requestId']) || $body['requestId'] === '') fail(400, 'externalupdate 必须提供 requestId');
+    $requestId = dockerUpdateRequestId($body['requestId']);
+
+    $existing = externalUpdateFindByRequestId($requestId);
+    if ($existing !== null) {
+        $raw = $existing['raw'];
+        $recordedExpected = strtolower((string) ($raw['expectedId'] ?? ''));
+        if (($raw['name'] ?? null) !== $name || $recordedExpected === ''
+            || !hash_equals($expectedId, $recordedExpected)) {
+            fail(409, 'requestId 已用于另一个锚点容器或容器身份,不能重复提交');
+        }
+        return [
+            'async' => true,
+            'jobId' => $existing['status']['jobId'],
+            'requestId' => $existing['status']['requestId'],
+            'duplicate' => true,
+        ];
+    }
+    $spec = externalComposeSpec($name, $expectedId);
+    return runExternalUpdateAsync($spec, $requestId);
+}
+
+/** 响应字段与 dockerlog 一致；requestId 恢复自身，project 在 409 后附着且不依赖锚点存活。 */
+function externalUpdateLog(mixed $rawRequestId, mixed $rawName = null, mixed $rawProject = null): array
+{
+    if (is_string($rawRequestId) && $rawRequestId !== '') {
+        $requestId = dockerUpdateRequestId($rawRequestId);
+        $existing = externalUpdateFindByRequestId($requestId);
+    } else {
+        if (is_string($rawProject) && $rawProject !== '') {
+            if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,127}$/D', $rawProject)) {
+                fail(400, '非法 Compose 项目名');
+            }
+            $project = $rawProject;
+            if (externalProjectIsManaged($project)) fail(409, 'compose.manager 项目请使用所属栈日志');
+        } elseif (is_string($rawName) && $rawName !== '') {
+            // 兼容只带 name 的旧客户端；新客户端优先 project，避免重建期间锚点消失。
+            $project = externalUpdateProjectForContainer($rawName);
+        } else {
+            fail(400, '必须提供 requestId 或 project');
+        }
+        $existing = [
+            'project' => $project,
+            'dir' => EXTERNAL_UPDATE_DIR . '/' . $project,
+            'raw' => readJsonFile(EXTERNAL_UPDATE_DIR . '/' . $project . '/status.json'),
+            'status' => readExternalUpdateStatus($project),
+        ];
+    }
+    if ($existing === null || !is_array($existing['raw'])) fail(404, '无外部 Compose 更新记录');
+    $status = $existing['status'];
+    return [
+        'jobId' => $status['jobId'],
+        'requestId' => $status['requestId'],
+        'state' => $status['state'],
+        'message' => $status['message'],
+        'log' => tailFile($existing['dir'] . '/update.log'),
+        'running' => $status['running'],
+        'result' => $status['result'],
+    ];
 }
 
 // ==================== 普通 Docker 容器参数编辑 ====================
@@ -5229,6 +5760,10 @@ if ($method === 'GET') {
         ok(indexStatus());
     }
 
+    if ($action === 'externalprojects') {
+        ok(externalProjects());
+    }
+
     if ($action === 'list') {
         $names = [];
         foreach (scandir(PROJECTS_DIR) ?: [] as $entry) {
@@ -5268,6 +5803,10 @@ if ($method === 'GET') {
             'log' => tailFile($dir . '/last_cmd.log'),
             'running' => file_exists($dir . '/.op-running'),
         ]);
+    }
+
+    if ($action === 'externalupdatelog') {
+        ok(externalUpdateLog($_GET['requestId'] ?? null, $_GET['name'] ?? null, $_GET['project'] ?? null));
     }
 
     // 更新状态由任务记录和真实进程组推导;旧字段 running/log/result 保持兼容。
@@ -5439,6 +5978,10 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
             fail(422, '该容器无 webGui 模板,无法用此方式更新(可走 Compose/命令行)');
         }
         ok(runDockerUpdateAsync($name, $tmpl, $container, $expectedId, $requestId));
+    }
+
+    if ($action === 'externalupdate') {
+        ok(startExternalUpdate($body));
     }
 
     // 服务器电源(重启/关机):高危不可逆。严格白名单 + 审计先写 + nohup 异步下发,
