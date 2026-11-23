@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,11 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.8(2026-11-23)
+
+- 兼容 Unraid 7.4 的 `flashGUID` 与旧版 `flashGuid` 字段，修复 Pro 校验读取本机标识失败导致容器「更新全部」等操作被中断的问题
+- 仅 compose-api 后端修复，绑机哈希与 License 规则不变，原生 App 功能无变化；**升级后需重跑宿主安装脚本**
 
 ### v1.5.7(2026-11-23)
 

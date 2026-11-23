@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.8] - 2026-11-23
+
+### Fixed
+
+- Support Unraid 7.4 renaming `flashGuid` to `flashGUID` while retaining compatibility with the legacy field. Pro re-authorization no longer falsely reports that the local Unraid identity is unreadable, which previously blocked “Update All” and other Pro actions before execution
+- Device binding still uses the SHA-256 hash of the same GUID, with unchanged license verification and offline rules. This is a compose-api backend fix with no native app feature changes; **re-run the host install script after upgrading**
+
+## [TestFlight 2.0.0 (136)] - 2026-11-23
+
+### Changed
+
+- Dashboard CPU, GPU, memory, network, disk, and Parity cards can collapse into single-line summaries while retaining their key values. Tap the title row or use the long-press menu to toggle a card
+- Collapsed states persist independently for each card. All cards remain expanded by default, while “Reset Layout” restores both the default order and expanded states; existing detail expansion states are preserved
+- Collapsing is visual only: polling is unchanged, disk details are not fetched, and sleeping disks are never spun up. VoiceOver hints and Reduce Motion are supported
+- Dashboard cards are now organized into independent source files with shared trend and detail components, preserving the existing interface and behavior
+- Native app only; Web, Docker, and compose-api are unchanged, with no install-script rerun needed
+
 ## [TestFlight 2.0.0 (135)] - 2026-11-23
 
 ### Changed

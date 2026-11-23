@@ -87,7 +87,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.7';
+const APP_VERSION = '1.5.8';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -457,7 +457,9 @@ function licenseVerifyKey(string $key): array
 function licenseServerGuid(): string
 {
     $vars = @parse_ini_file(ARRAY_VAR_FILE, false, INI_SCANNER_RAW);
-    $guid = is_array($vars) ? trim((string) ($vars['flashGuid'] ?? '')) : '';
+    // Unraid 7.4 将 flashGuid 改为 flashGUID;按字段名小写兼容新旧系统,绑定哈希口径不变。
+    $normalized = is_array($vars) ? array_change_key_case($vars, CASE_LOWER) : [];
+    $guid = trim((string) ($normalized['flashguid'] ?? ''));
     if ($guid === '') {
         fail(403, '无法读取本机 unRAID 标识,暂不能确认 Pro 授权');
     }

@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,11 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.8 (2026-11-23)
+
+- Support both Unraid 7.4 `flashGUID` and legacy `flashGuid`, fixing Pro identity lookup failures that blocked “Update All” and other Pro actions before execution
+- compose-api backend fix only; device-binding hashes and license rules are unchanged, and native app features are unaffected. **Re-run the host install script after upgrading**
 
 ### v1.5.7 (2026-11-23)
 

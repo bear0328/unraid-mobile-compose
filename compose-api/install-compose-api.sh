@@ -34,7 +34,7 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.8/compose-api/api.php"
 # Compose Manager Plus 是 Pro 宿主后端唯一的第三方 Unraid 插件依赖;CA 插件本身不是依赖。
 # 固定到已审核的上游提交(Plus 2026.11.13a),避免 main 分支变化绕过发布审核。
 # 清单内的 txz 使用上游 release 固定版本 URL,并由插件机制校验 MD5。
@@ -48,7 +48,7 @@ host_path() { printf '%s%s' "$HOST_ROOT" "$1"; }
 PLUGIN_CLI="$(host_path /usr/local/sbin/plugin)"
 COMPOSE_PLUGIN_FILE="$(host_path /var/log/plugins/compose.manager.plg)"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="e457cf7a09b171297374fa882b085127a7f3c31c37f96dc4516bce62e7eac442"
+EXPECTED_API_SHA256="02eaf9fa38535199f1c6876dcab0766404cc7a3e419fc37b17195200d74fe46f"
 EXPECTED_WORKER_SHA256="af1e7ca0db4807feebc6ba564c9630ee8d41580a6787ee8c28df90ca4849b150"
 
 PLUGIN_DIR="$(host_path /boot/config/plugins/unraid-mobile)"
