@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.4] - 2026-11-23
+
+### Fixed
+
+- Container batch actions now exclude selections hidden by filtering. Docker auto-start and creation fields survive list/detail mapping, stats recover after failed polls, and concurrent row actions retain independent loading states
+- Live container logs de-duplicate in-flight polls and ignore responses from closed or replaced sessions, preventing stale log updates
+
+### Changed
+
+- Containers gain URL-synchronized keyboard-accessible tabs, separate Docker/VM freshness, search empty states, Compose loading skeletons, a safe-area-aware sticky batch toolbar, and larger touch targets
+- Image update checks and icon loading run in parallel, while memoized log lines avoid repeatedly parsing unchanged ANSI content. Selection, tabs, batch actions, and update tasks are separated into focused components and hooks
+- Web/Docker UI release; native app features are unchanged. **Re-run the host install script after upgrading** to align compose-api release metadata
+
 ## [TestFlight 2.0.0 (128)] - 2026-11-22
 
 ### Added

@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,12 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.4(2026-11-23)
+
+- 修复搜索隐藏项仍参与批量操作、Docker 自启动/创建时间丢失、stats 失败后无法恢复、并发行操作 loading 互相覆盖，以及实时日志重复请求和旧会话写入
+- 新增 URL 同步的可访问页签、独立 Docker/VM 新鲜度、清晰的空态/加载态、安全区适配的批量控件与更大触控区域，并优化元数据加载和日志渲染
+- 仅 Web/Docker 界面更新，原生 App 功能不变；**升级后需重跑宿主安装脚本**以同步 compose-api 发布版本元数据
 
 ### TestFlight 2.0.0(128)(2026-11-22)
 

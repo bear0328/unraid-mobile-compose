@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.3/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.4/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,12 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.4 (2026-11-23)
+
+- Fixed filtered selections leaking into batch actions, missing Docker auto-start/creation fields, stats recovery, concurrent row loading, and overlapping or stale live-log requests
+- Added URL-synchronized accessible tabs, independent Docker/VM freshness, clearer empty/loading states, safe-area-aware batch controls, and larger touch targets; metadata loading and log rendering are faster
+- Web/Docker UI release; native app features are unchanged. **Re-run the host install script after upgrading** to align compose-api release metadata
 
 ### TestFlight 2.0.0 (128) (2026-11-22)
 
