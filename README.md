@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -256,6 +256,16 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.7 (2026-11-23)
+
+- GPU metrics use a shared four-second cache instead of launching external samplers on every one-second poll. CPU power and memory remain live, and the Web container summary removes its duplicated count
+- Coordinated with TestFlight 2.0.0 (135). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+### TestFlight 2.0.0 (135) (2026-11-23)
+
+- The dashboard adds pull-to-refresh without fetching disk details or spinning up sleeping disks; an unloaded disk card now offers guidance and a “Fetch Disk Details” action
+- Coordinated with Web/Docker v1.5.7. **Re-run the host install script after upgrading** to enable the GPU sampling optimization
 
 ### v1.5.6 (2026-11-23)
 

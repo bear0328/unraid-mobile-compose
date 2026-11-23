@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (135)] - 2026-11-23
+
+### Changed
+
+- The dashboard now supports pull-to-refresh through the same data path as toolbar refresh and error retry. Regular refreshes do not fetch disk details or spin up sleeping disks
+- The disk card now explains its unloaded state and provides a “Fetch Disk Details” button instead of a blank placeholder; spinning up disks still requires separate confirmation
+- Coordinated with Web/Docker v1.5.7. **Re-run the host install script after upgrading** to enable the GPU sampling optimization
+
+## [1.5.7] - 2026-11-23
+
+### Changed
+
+- GPU metrics now use a shared four-second cache, preventing Intel/NVIDIA sampling commands from starting on every one-second live poll. Intel model detection is cached per process, while CPU power and memory remain live
+- The Web container summary removes the duplicated running count from its title; the ring and legend continue to show utilization and per-state totals
+- Coordinated with TestFlight 2.0.0 (135). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+## [TestFlight 2.0.0 (134)] - 2026-11-23
+
+### Fixed
+
+- Container updates, lifecycle actions, parameter editing, and batch jobs now exclude each other at the final execution layer. Each batch retains its original server client and configuration generation, stopping remaining mutations and refreshes after a configuration change
+- Compose and standalone containers publish update results incrementally. Lost responses, timeouts, and undispatched items remain neutral “outcome pending” states instead of false failures or conflicts
+- Compose detail, log, and YAML-save requests consistently escape special stack names. VM state matching trims and lowercases input, while log sessions rebuild after server configuration changes
+
+### Changed
+
+- Containers, Compose, and VMs share neutral cards, 42pt icons, tappable summary filters, and resilient long-text layouts. Non-editing rows support VoiceOver activation, while summary cards and badges reflow for large text
+- Native app only; Web, Docker, and compose-api are unchanged, with no install-script rerun needed
+
 ## [1.5.6] - 2026-11-23
 
 ### Security

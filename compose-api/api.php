@@ -87,7 +87,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.6';
+const APP_VERSION = '1.5.7';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -698,15 +698,20 @@ function readCpuPowerCounter(): ?array
 
 function intelGpuName(): string
 {
+    // lspci 结果静态,进程内缓存,避免每次 GPU 采样都 fork 一次 lspci
+    static $cachedName = null;
+    if ($cachedName !== null) {
+        return $cachedName;
+    }
     $lines = preg_split('/\r?\n/', (string) @shell_exec(PATH_ENV . ' lspci -D -nn 2>/dev/null')) ?: [];
     foreach ($lines as $line) {
         if (stripos($line, 'Intel') === false
             || !preg_match('/(VGA compatible controller|3D controller|Display controller)(?:\s*\[[0-9a-f]+\])?:\s*(.+)$/i', $line, $matches)) {
             continue;
         }
-        return trim($matches[2]);
+        return $cachedName = trim($matches[2]);
     }
-    return 'Intel GPU';
+    return $cachedName = 'Intel GPU';
 }
 
 function readIntelGpus(): array
@@ -795,8 +800,31 @@ function readSystemMetrics(): array
     return [
         'cpu' => readCpuPowerCounter(),
         'memory' => readMemoryBreakdown(),
-        'gpus' => array_merge(readIntelGpus(), readNvidiaGpus()),
+        'gpus' => readGpusCached(),
     ];
+}
+
+/**
+ * GPU 采样结果按 TTL 缓存(tmp 文件)。intel_gpu_top(-n 2 -s 500)自身采样约 1s、
+ * nvidia-smi 每次冷启动进程;若随 1s liveTick 每次都 fork,服务器端开销大且会把
+ * 串行 PollLoop 的实际周期拖到 2s+。这里 GPU 按 4s 降频(CPU 功耗/内存仍每次实时读),
+ * 对趋势观察足够,同时省去约 3/4 的外部命令;原生与 Web 前端均无需改动。
+ */
+function readGpusCached(int $ttl = 4): array
+{
+    $cacheFile = '/tmp/unraid-mobile-compose-gpus.json';
+    $now = time();
+    $cached = @file_get_contents($cacheFile);
+    if ($cached !== false) {
+        $decoded = json_decode($cached, true);
+        if (is_array($decoded) && isset($decoded['ts'], $decoded['gpus'])
+            && is_array($decoded['gpus']) && ($now - (int) $decoded['ts']) < $ttl) {
+            return $decoded['gpus'];
+        }
+    }
+    $gpus = array_merge(readIntelGpus(), readNvidiaGpus());
+    @file_put_contents($cacheFile, json_encode(['ts' => $now, 'gpus' => $gpus]), LOCK_EX);
+    return $gpus;
 }
 
 /**

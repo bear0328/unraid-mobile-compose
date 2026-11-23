@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.6/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.7/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -227,6 +227,16 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.7(2026-11-23)
+
+- GPU 指标采用 4 秒共享缓存，避免随 1 秒轮询反复启动外部采样命令；CPU 功耗和内存仍实时读取，Web 容器摘要同步去除重复计数
+- 与 TestFlight 2.0.0(135) 协调发布；**升级后需重跑宿主安装脚本**以部署新版 compose-api
+
+### TestFlight 2.0.0(135)(2026-11-23)
+
+- 总览新增下拉刷新，普通刷新不读取磁盘详情或主动唤醒休眠盘；磁盘卡未加载时提供说明和“获取磁盘详情”入口
+- 与 Web/Docker v1.5.7 协调发布；**升级后需重跑宿主安装脚本**以启用 GPU 采样优化
 
 ### v1.5.6(2026-11-23)
 
