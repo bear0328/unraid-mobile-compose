@@ -92,7 +92,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.9';
+const APP_VERSION = '1.5.10';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -3985,7 +3985,7 @@ function caAppsRecord(array $item): ?array
     return $record;
 }
 
-/** 已安装状态上下文:插件 .plg、运行/停止的容器、已装 Docker 模板(全部只读) */
+/** 当前已安装状态上下文:插件 .plg 与运行/停止的实际容器(全部只读,不看模板残留) */
 function caAppsInstalledContext(): array
 {
     $plugins = [];
@@ -4026,38 +4026,17 @@ function caAppsInstalledContext(): array
         }
     }
 
-    $templates = [];
-    $templateNames = [];
-    foreach ([TEMPLATE_USER_DIR, DOCKER_TEMPLATE_COMMUNITY_DIR] as $dir) {
-        foreach (glob($dir . '/*.xml') ?: [] as $path) {
-            $dom = pluginXml($path);
-            if ($dom === null) {
-                continue;
-            }
-            $repo = caAppsRepoKey((string) ($dom->Repository ?? ''));
-            if ($repo !== '') {
-                $templates[$repo] = true;
-            }
-            $name = caAppsKey((string) ($dom->Name ?? ''));
-            if ($name !== '') {
-                $templateNames[$name] = true;
-            }
-        }
-    }
-
     return [
         'plugins' => $plugins,
         'pluginNames' => $pluginNames,
         'images' => $images,
         'containers' => $containers,
-        'templates' => $templates,
-        'templateNames' => $templateNames,
     ];
 }
 
 /**
- * 是否已安装:只认明确证据(插件 id/名称精确命中、容器镜像仓库精确命中、
- * 容器名精确命中、已装模板仓库/名称精确命中),拿不准一律 false,不误报。
+ * 是否当前已安装:插件只认 .plg id/名称精确命中;Docker 只认实际容器的
+ * 镜像仓库/名称精确命中。用户模板可能残留、社区模板仅用于安装,均不算安装证据。
  */
 function caAppsInstalled(string $id, string $name, string $repo, bool $isPlugin, array $ctx): bool
 {
@@ -4069,15 +4048,11 @@ function caAppsInstalled(string $id, string $name, string $repo, bool $isPlugin,
         return $nameKey !== '' && mb_strlen($nameKey) >= 3 && isset($ctx['pluginNames'][$nameKey]);
     }
     $repoKey = caAppsRepoKey($repo);
-    if ($repoKey !== '') {
-        if (isset($ctx['images'][$repoKey]) || isset($ctx['templates'][$repoKey])) {
-            return true;
-        }
+    if ($repoKey !== '' && isset($ctx['images'][$repoKey])) {
+        return true;
     }
-    if ($nameKey !== '' && mb_strlen($nameKey) >= 3) {
-        if (isset($ctx['containers'][$nameKey]) || isset($ctx['templateNames'][$nameKey])) {
-            return true;
-        }
+    if ($nameKey !== '' && mb_strlen($nameKey) >= 3 && isset($ctx['containers'][$nameKey])) {
+        return true;
     }
     return false;
 }

@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.10] - 2026-11-27
+
+### Fixed
+
+- Docker “installed” states in the app store now use only actual running or stopped containers, matched precisely by container name or image repository. Leftover user templates and community templates no longer count as installed; plugin `.plg` detection is unchanged
+
+### Changed
+
+- Coordinated with TestFlight 2.0.0 (138). **Re-run the host install script after upgrading** to deploy the compose-api installation-state fix
+
+## [TestFlight 2.0.0 (138)] - 2026-11-27
+
+### Fixed
+
+- Emby/Jellyfin Started reports now retry within a fixed limit. Progress retains only the latest pending position on weak networks, while closing or retrying playback terminates the old session and prioritizes Stopped without queued progress or duplicate stops
+- Remote media Range probes read at most one byte instead of aggregating a large response when a server ignores Range. Cross-origin redirects no longer forward media-server or WebDAV credentials, and playback reports expose the player's real seek capability
+
+### Changed
+
+- Removed the duplicate App Store entry from the container overview; the Settings entry and its free/Pro routing remain unchanged
+- Coordinated with Web/Docker and compose-api v1.5.10. **Re-run the host install script after upgrading**
+
 ## [1.5.9] - 2026-11-23
 
 ### Added
