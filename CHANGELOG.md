@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (140)] - 2026-11-27
+
+### Added
+
+- Added background audio with an independent audio session, interruption resume rules, headphone-unplug pause, route-change handling, and safe recovery after audio-service resets. The app declares only the `audio` background mode
+- Added music playback queues for WebDAV audio in the current folder and currently loaded Emby/Jellyfin audio, with sequential/shuffle playback, list/single-track repeat, previous/next, automatic advance, seek, resume, and lock-screen queue commands
+- Added audio-specific Now Playing metadata and artwork, plus Emby/Jellyfin Started, Progress, and Stopped reporting for music
+
+### Changed
+
+- Kept video playback on the existing player and original-quality Direct Play path. No automatic remux, transcode, bitrate reduction, or subtitle burning is introduced
+- Music queues contain only currently loaded audio; directory refreshes cannot replace an active queue, and changing server credentials closes the music player
+
+### Fixed
+
+- Saving progress and stopping the old reporter now happen before changing tracks. Progress cannot be saved or reported against a new track before its stream is bound
+- Decoder failures are visible and retryable in the music player, abnormal endings do not trigger automatic advance, and audio with initially unknown duration can resume after its real duration becomes available
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.10, with no install-script rerun needed
+- PiP is not included. Real-device background audio, interruption, Bluetooth/route, lock-screen, and continuous music playback validation remains required
+
 ## [TestFlight 2.0.0 (139)] - 2026-11-27
 
 ### Added

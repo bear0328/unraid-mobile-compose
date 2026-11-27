@@ -257,6 +257,13 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (140) (2026-11-27)
+
+- Added background audio with independent audio-session management, interruption recovery, headphone-unplug pause, route-change handling, and lock-screen/Control Center playback controls
+- Added music queues for the current WebDAV folder and currently loaded Emby/Jellyfin audio, including sequential/shuffle playback, list/single-track repeat, previous/next, automatic advance, resume, and Emby/Jellyfin progress reporting
+- Preserved the existing video player and original-quality Direct Play path without automatic transcoding; switching tracks isolates saved progress and reporting between the old and new items
+- Native app only; Web, Docker, and compose-api remain at v1.5.10, with no install-script rerun needed. PiP is not included; real-device background, interruption, route, and queue validation remains required
+
 ### TestFlight 2.0.0 (139) (2026-11-27)
 
 - Redesigned the native Emby/Jellyfin media center with Continue Watching, latest library items, poster/list layouts, artwork caching, and isolated offline directory snapshots. Cached entries never include media paths or remote STRM sources
