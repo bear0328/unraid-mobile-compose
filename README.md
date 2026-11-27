@@ -264,6 +264,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (144) (2026-11-27)
+
+- Newly Added now shows one series card per show instead of listing every episode. Shows are ordered by their newest episode's date added, tapping opens the series, and movies remain individual entries
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Orphan episodes without series identity no longer occupy standalone cards
+
 ### TestFlight 2.0.0 (143) (2026-11-27)
 
 - Newly Added episodes no longer prioritize video-frame thumbnails. They now prefer series posters with season-poster fallback, while movies and series retain their own artwork

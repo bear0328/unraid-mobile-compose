@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (144)] - 2026-11-27
+
+### Changed
+
+- Newly Added now collapses episodes with the same `SeriesId` into one series card instead of listing every episode. Cards use the series name and poster, open the series for season/episode selection, and leave movies as individual entries
+- Items are sorted by `DateCreated` before series deduplication, so each show's position reflects its newest added episode. Orphan episodes without series identity no longer occupy standalone cards
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed
+- All 924 native XCTest cases pass. Real-device series grouping, ordering, and navigation against actual Emby/Jellyfin servers still require validation
+
 ## [TestFlight 2.0.0 (143)] - 2026-11-27
 
 ### Fixed
