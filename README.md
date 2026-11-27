@@ -264,6 +264,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (143) (2026-11-27)
+
+- Newly Added episodes no longer prioritize video-frame thumbnails. They now prefer series posters with season-poster fallback, while movies and series retain their own artwork
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Continue Watching still prefers season posters and falls back to series posters
+
 ### TestFlight 2.0.0 (142) (2026-11-27)
 
 - Reorganized the native player home into Libraries, Continue Watching, and Newly Added, all horizontally scrollable. Libraries now show entry cards only, with library contents available after tapping through

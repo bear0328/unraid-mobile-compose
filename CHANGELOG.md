@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (143)] - 2026-11-27
+
+### Fixed
+
+- Newly Added episodes now prefer series posters and fall back to season posters instead of prioritizing episode video-frame thumbnails. Movies and series continue to use their own artwork
+- Artwork cache identities use the selected series or season item and tag. Continue Watching retains its independent season-first, series-fallback behavior
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed
+- All 923 native XCTest cases pass. Real-device Newly Added artwork and fallback ordering against actual Emby/Jellyfin servers still require validation
+
 ## [TestFlight 2.0.0 (142)] - 2026-11-27
 
 ### Changed
