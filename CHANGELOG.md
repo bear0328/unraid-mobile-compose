@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (147)] - 2026-11-27
+
+### Changed
+
+- Consolidated Dashboard refresh into one visible toolbar button while retaining pull-to-refresh and an in-progress indicator
+- Removed the duplicate server-card refresh button and the constantly changing relative timestamp; the last successful update time now appears only when a refresh fails and cached data remains visible
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
+- All 944 native XCTest cases pass
+
 ## [TestFlight 2.0.0 (146)] - 2026-11-27
 
 ### Fixed

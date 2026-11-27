@@ -264,6 +264,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (147) (2026-11-27)
+
+- Simplified Dashboard refresh to one visible toolbar button while retaining pull-to-refresh. Removed the duplicate server-card button and constantly changing timestamp; the last successful update time appears only when cached data is shown after a refresh failure
+- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed. All 944 native XCTest cases pass
+
 ### TestFlight 2.0.0 (146) (2026-11-27)
 
 - Fixed a `0x8BADF00D` watchdog termination caused by VLC destruction blocking the main thread during backgrounding or process termination. Retired players now release on a dedicated serial background queue without changing background-audio behavior
