@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (148)] - 2026-11-27
+
+### Changed
+
+- Added per-server and per-user local snapshots for Player home's Continue Watching and Latest sections, restoring libraries and home content immediately before background revalidation
+- Offline or failed refreshes retain cached home content, and partial failures no longer overwrite the last complete snapshot with incomplete results. Existing artwork caching remains in use; video files, API keys, and media paths are not cached
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
+- All 946 native XCTest cases pass
+
 ## [TestFlight 2.0.0 (147)] - 2026-11-27
 
 ### Changed
