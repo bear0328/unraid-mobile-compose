@@ -22,8 +22,7 @@
       <stop offset="0.38" stop-color="#000000" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" fill="#FFFFFF"/>
-  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
   <rect x="156" y="112" width="216" height="320" rx="44" fill="#8E2412" opacity="0.35"/>
   <rect x="154" y="102" width="216" height="320" rx="44" fill="#64748B"/>
   <rect x="148" y="96" width="216" height="320" rx="44" fill="url(#frame)"/>

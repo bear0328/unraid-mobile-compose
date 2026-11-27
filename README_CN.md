@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -234,6 +234,17 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.13(2026-11-27)
+
+- 将确认的橙色品牌设计统一应用到原生 App、Web/PWA、Capacitor 启动图和公开部署仓，并按各平台原生方式呈现圆角
+- 继续观看改为每部剧一张卡片，保留最近可续播单集，使用剧集海报并支持直接续播；电影保持独立展示
+- 与 TestFlight 2.0.0(149) 协调发布。compose-api 仅将 `APP_VERSION` 更新为 1.5.13，无新增宿主功能；v1.5.12 宿主可页内同步升级
+
+### TestFlight 2.0.0(149)(2026-11-27)
+
+- 继续观看按最近播放顺序将同一部剧归并为一张卡片，显示剧名、剧集海报和单集信息，点击直接续播最近一集
+- AppIcon 更新为确认的橙色设计与 iOS 原生连续圆角；完整 XCTest 948/948 通过
 
 ### TestFlight 2.0.0(148)(2026-11-27)
 

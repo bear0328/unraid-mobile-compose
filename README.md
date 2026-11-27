@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -263,6 +263,17 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.13 (2026-11-27)
+
+- Unified the confirmed orange brand artwork across native, Web/PWA, Capacitor splash screens, and the public deployment repository, with platform-native rounded presentation
+- Continue Watching now shows one series card per show with the latest resumable episode, series artwork, and direct resume; movies remain independent
+- Coordinated with TestFlight 2.0.0 (149). compose-api only advances `APP_VERSION` to 1.5.13, with no new host functionality; v1.5.12 hosts can synchronize in place
+
+### TestFlight 2.0.0 (149) (2026-11-27)
+
+- Continue Watching collapses episodes into one card per series, ordered by recent playback. Cards show the series title and poster with episode details underneath, while tapping resumes the latest episode directly
+- Updated the app icon to the confirmed orange design with native iOS continuous rounding. All 948 native XCTest cases pass
 
 ### TestFlight 2.0.0 (148) (2026-11-27)
 

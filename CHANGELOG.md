@@ -2,41 +2,28 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [TestFlight 2.0.0 (148)] - 2026-11-27
+## [1.5.13] - 2026-11-27
 
 ### Changed
 
-- Added per-server and per-user local snapshots for Player home's Continue Watching and Latest sections, restoring libraries and home content immediately before background revalidation
-- Offline or failed refreshes retain cached home content, and partial failures no longer overwrite the last complete snapshot with incomplete results. Existing artwork caching remains in use; video files, API keys, and media paths are not cached
+- Unified the confirmed orange full-bleed brand artwork across the native app icon, Web favicon and PWA icons, Capacitor icon and splash screens, and the public deployment repository. Native icons retain the standard full-bleed source so iOS applies its continuous rounded mask
+- Continue Watching now shows one card per series, using the series name and poster with the latest resumable episode as the subtitle. Tapping still resumes that episode directly; movies remain individual entries
 
 ### Notes
 
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
-- All 946 native XCTest cases pass
+- Coordinated with TestFlight 2.0.0 (149). compose-api only advances `APP_VERSION` to 1.5.13 and adds no host functionality; v1.5.12 hosts can synchronize in place without manually rerunning the install script
+- Full native XCTest 948/948 and Vitest 1951/1951 pass, together with lint and production build checks. Real-device Continue Watching and icon appearance remain subject to user acceptance
 
-## [TestFlight 2.0.0 (147)] - 2026-11-27
+## [TestFlight 2.0.0 (149)] - 2026-11-27
 
 ### Changed
 
-- Consolidated Dashboard refresh into one visible toolbar button while retaining pull-to-refresh and an in-progress indicator
-- Removed the duplicate server-card refresh button and the constantly changing relative timestamp; the last successful update time now appears only when a refresh fails and cached data remains visible
+- Continue Watching collapses multiple episodes from the same series into the most recently played entry. Cards show the series title and poster, retain the episode number and title as secondary text, and continue to resume playback directly
+- Updated the app icon to the confirmed orange design with no white outer corners; iOS applies the native continuous rounded mask
 
 ### Notes
 
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
-- All 944 native XCTest cases pass
-
-## [TestFlight 2.0.0 (146)] - 2026-11-27
-
-### Fixed
-
-- Fixed a `0x8BADF00D` watchdog termination that could occur when the app entered the background or the system terminated its process during playback, because VLC destruction blocked the main thread
-- Retired `VLCMediaPlayer` instances now transfer their final reference to a dedicated serial background queue across track changes, source retries, MPEG-TS rebuilds, and player dismissal, without changing background-audio or system-playback behavior
-
-### Notes
-
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
-- All 944 native XCTest cases pass. Real iPhone playback, backgrounding, and termination scenarios still require validation with TestFlight 146
+- Coordinated with Web/Docker and compose-api v1.5.13. All 948 native XCTest cases pass; real-device series grouping, direct resume, and icon rendering still require validation
 
 ## [1.5.12] - 2026-11-27
 
