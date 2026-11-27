@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -263,6 +263,18 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.12 (2026-11-27)
+
+- Native Settings now uses seven groups with unified Pro and credential flows, dedicated host-agent status, snapshot-bound connection tests, verified Keychain operations, and transactional configuration restore. Polling and appearance preferences join automatic backups
+- Nginx `/config/` exposes only exact `settings.json` GET/OPTIONS publicly; other configuration, including License records and `app-backup`, requires DAV authentication by default. Backups contain secrets and are protected by WebDAV authentication, not encryption
+- Coordinated with TestFlight 2.0.0 (145). compose-api only advances `APP_VERSION` to 1.5.12, with no new host functionality; v1.5.11 hosts can synchronize in place without a manual install-script rerun
+
+### TestFlight 2.0.0 (145) (2026-11-27)
+
+- Reorganized Settings into seven groups with a unified Pro entry, consistent credential save/validate/clear behavior, and a dedicated host-agent subpage with backend status
+- Added validated-snapshot connection tests, Keychain write/delete read-back verification with failure recovery, complete restore preflight, transactional commit/rollback, strict version/ID/URL rejection, safe cache paths, and automatic backup of polling/appearance preferences
+- Full native XCTest 943/943, the latest targeted suite 59/59, and Vitest 1951/1951 pass; simulator light/dark and large-text checks pass. Real-device interactions remain subject to user acceptance
 
 ### TestFlight 2.0.0 (144) (2026-11-27)
 

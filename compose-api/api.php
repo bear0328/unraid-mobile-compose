@@ -95,7 +95,7 @@ declare(strict_types=1);
  */
 
 // 与 package.json 同步；capabilities 报告当前执行的宿主后端版本,不能据此推断容器镜像版本。
-const APP_VERSION = '1.5.11';
+const APP_VERSION = '1.5.12';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)

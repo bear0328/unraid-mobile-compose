@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.12/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -234,6 +234,18 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.12(2026-11-27)
+
+- 原生设置重组为 7 组，统一 Pro 与凭据流程，提供独立宿主后端状态、绑定验证快照的连接测试、可核验的 Keychain 操作和事务式配置恢复；轮询与外观偏好纳入自动备份
+- nginx `/config/` 仅公开精确 `settings.json` 的 GET/OPTIONS，其余配置（含 License 记录与 `app-backup`）默认要求 DAV 鉴权。备份包含秘密，受 WebDAV 鉴权保护，而非加密保护
+- 与 TestFlight 2.0.0(145) 协调发布。compose-api 仅将 `APP_VERSION` 更新为 1.5.12，无新增宿主功能；v1.5.11 宿主可页内同步升级，无需手工重跑安装脚本
+
+### TestFlight 2.0.0(145)(2026-11-27)
+
+- 设置重组为 7 组，统一 Pro 入口和凭据保存/验证/清除流程，宿主后端控制与状态迁入独立子页
+- 新增绑定验证快照的连接测试、Keychain 写入/删除读回核验与失败恢复、完整恢复预检、事务提交/回滚、非法版本/ID/URL 拒绝与安全缓存路径，并自动备份轮询/外观偏好
+- 完整 XCTest 943/943、最新专项 59/59、Vitest 1951/1951 及模拟器浅色/深色/大字体检查通过；真实设备交互仍由用户验收
 
 ### TestFlight 2.0.0(144)(2026-11-27)
 

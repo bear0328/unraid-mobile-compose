@@ -2,6 +2,40 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.12] - 2026-11-27
+
+### Changed
+
+- Reorganized native Settings into seven groups with a unified Pro entry, consistent credential save/validate/clear flows, and a dedicated host-agent subpage with backend status. Polling and appearance preferences are now included in automatic backups
+- Configuration restore now performs a complete preflight and transactional commit/rollback, rejects invalid versions, IDs, and URLs, and uses safe cache paths
+
+### Security
+
+- Connection tests are bound to the validated snapshot. Keychain writes and deletions are verified by reading them back, with recovery on failure
+- Nginx `/config/` now makes only GET/OPTIONS requests to the exact `settings.json` path public. All other configuration, including License device/activation records and `app-backup`, requires DAV authentication by default. Backups contain secrets and are protected by WebDAV authentication, not encryption
+
+### Notes
+
+- Coordinated with TestFlight 2.0.0 (145). compose-api only advances `APP_VERSION` to 1.5.12 and adds no host functionality. Hosts on v1.5.11 can synchronize in place without manually rerunning the install script
+- Full native XCTest 943/943, the latest targeted suite 59/59, and Vitest 1951/1951 pass. Simulator checks cover light/dark appearance and large text; real-device interactions remain subject to user acceptance
+
+## [TestFlight 2.0.0 (145)] - 2026-11-27
+
+### Changed
+
+- Reorganized Settings into seven groups, unified the Pro entry and credential save/validate/clear behavior, and moved host-agent controls and status into a dedicated subpage
+- Added polling and appearance preferences to automatic backups
+
+### Security
+
+- Bound connection tests to validated snapshots, with Keychain write/delete read-back verification and failure recovery
+- Added complete configuration-restore preflight, transactional commit/rollback, rejection of invalid versions/IDs/URLs, and safe cache-path handling
+
+### Notes
+
+- Coordinated with Web/Docker and compose-api v1.5.12. compose-api only advances `APP_VERSION` and adds no host functionality; v1.5.11 hosts can synchronize in place without manually rerunning the install script
+- Full native XCTest 943/943, the latest targeted suite 59/59, and Vitest 1951/1951 pass. Simulator checks cover light/dark appearance and large text; real-device interactions remain subject to user acceptance
+
 ## [TestFlight 2.0.0 (144)] - 2026-11-27
 
 ### Changed
