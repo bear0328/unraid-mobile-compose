@@ -257,6 +257,13 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (139) (2026-11-27)
+
+- Redesigned the native Emby/Jellyfin media center with Continue Watching, latest library items, poster/list layouts, artwork caching, and isolated offline directory snapshots. Cached entries never include media paths or remote STRM sources
+- Direct Play now preserves one consistent media source across streaming and reporting, with explicit retry and manual original-quality source selection. Playback failures identify server/error-document responses instead of misreporting them as decoder failures; no automatic remux or transcoding is added
+- Added lock-screen and Control Center artwork, progress, play/pause, 15-second skip, and supported seek commands. Player lock blocks system controls too; background audio, PiP, and music queues are not included
+- Native app only; Web, Docker, and compose-api remain at v1.5.10, with no install-script rerun needed
+
 ### v1.5.10 (2026-11-27)
 
 - Docker installation states now rely only on actual running or stopped containers. Leftover user templates and community templates no longer cause false positives, while plugin detection is unchanged

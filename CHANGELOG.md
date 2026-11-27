@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (139)] - 2026-11-27
+
+### Added
+
+- Rebuilt the native Emby/Jellyfin media center with Continue Watching, latest items per library, library cards, list/poster layouts, resilient artwork loading, and episode-to-series poster fallback
+- Added lock-screen and Control Center metadata and artwork, explicit play/pause, 15-second skip controls, and seek commands for media that reports seek support. Player lock also blocks system remote commands
+
+### Changed
+
+- Directory snapshots now restore instantly and refresh online while remaining isolated by server, user, directory, and sorting. Cached entries exclude media paths and remote STRM sources; playback still requires a fresh authorized source
+- Direct Play keeps the URL, container, credentials, media-source ID, and reporting session bound to one selected source. Users can retry or manually choose another original-quality source with a fresh session and video canvas; no automatic remux, transcode, bitrate reduction, or subtitle burning is introduced
+
+### Fixed
+
+- Remote playback failures now distinguish authentication, missing sources, HTTP errors, empty responses, and JSON/XML/HTML error documents, including responses with generic or missing MIME types
+- Prevented stale home loads, directory pages, artwork requests, and remote commands from affecting a newer server, sort order, playback source, or dismissed player
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.10, with no install-script rerun needed
+- Background audio, Picture in Picture, and music queues are not included. Real-device lock-screen, Bluetooth, media-source, and weak-network playback validation remains required
+
 ## [1.5.10] - 2026-11-27
 
 ### Fixed
