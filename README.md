@@ -264,6 +264,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (142) (2026-11-27)
+
+- Reorganized the native player home into Libraries, Continue Watching, and Newly Added, all horizontally scrollable. Libraries now show entry cards only, with library contents available after tapping through
+- Newly Added merges and deduplicates items across libraries by date added instead of creating a row per library. Continue Watching episodes now prefer season or series posters over episode video frames
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Real-device layout and artwork-fallback validation against actual media servers remains required
+
 ### v1.5.11 (2026-11-27)
 
 - Native App and Web Settings now synchronize the Pro host agent from a pinned official release, with full-package SHA-256 verification, pre-install backups, rollback, preserved API-key/License credentials, and request-ID recovery

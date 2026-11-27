@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (142)] - 2026-11-27
+
+### Changed
+
+- Reorganized the native player home into Libraries, Continue Watching, and Newly Added, each horizontally scrollable. Libraries now contain entry cards only rather than previews of every library's contents
+- Newly Added merges items across libraries by `DateCreated`, sorts newest first, deduplicates them, and shows up to 20 entries in one row instead of separate per-library rows
+- Continue Watching retains its progress bar while episodes prefer season posters and then series posters over episode video frames. Artwork cache identities use the selected artwork item and tag
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed
+- All 921 native XCTest cases pass. Real-device layout, cross-library ordering, and season/series poster fallback against actual Emby/Jellyfin servers still require validation
+
 ## [1.5.11] - 2026-11-27
 
 ### Added
