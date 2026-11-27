@@ -235,6 +235,23 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(152)(2026-11-28)
+
+- 媒体库改为横向滑动海报行，与继续观看/新增内容完全一致（图片纵向 2:3，排布横向，宽度 116）
+- 修复 autoindex 页面截断 UTF-8 字符导致的解析异常
+- 仅原生 App 更新，Web、Docker 和 compose-api 仍为 v1.5.13，无需重跑安装脚本；完整 XCTest 948/948 通过
+
+### TestFlight 2.0.0(151)(2026-11-28)
+
+- 媒体库临时改为竖排列表（后续 152 恢复为横向海报行）
+- 仅原生 App 更新，Web、Docker 和 compose-api 仍为 v1.5.13，无需重跑安装脚本；完整 XCTest 948/948 通过
+
+### TestFlight 2.0.0(150)(2026-11-28)
+
+- 媒体库首次尝试海报卡片布局，宽度偏大导致重叠（后续 152 修正为 116）
+- 更新 TestFlight 应用描述，完整区分免费版与 Pro 功能
+- 仅原生 App 更新，Web、Docker 和 compose-api 仍为 v1.5.13，无需重跑安装脚本；完整 XCTest 948/948 通过
+
 ### v1.5.13(2026-11-27)
 
 - 将确认的橙色品牌设计统一应用到原生 App、Web/PWA、Capacitor 启动图和公开部署仓，并按各平台原生方式呈现圆角

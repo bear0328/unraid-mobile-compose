@@ -264,6 +264,23 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (152) (2026-11-28)
+
+- Library now uses horizontal poster cards matching Continue Watching style (portrait 2:3 images, horizontal scroll, 116pt width)
+- Fixed autoindex page parsing errors caused by truncated UTF-8 characters
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
+
+### TestFlight 2.0.0 (151) (2026-11-28)
+
+- Library temporarily switched to a vertical list (restored to horizontal poster row in 152)
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
+
+### TestFlight 2.0.0 (150) (2026-11-28)
+
+- First attempt at poster card layout for library; width was too large causing overlap (fixed to 116pt in 152)
+- Updated TestFlight app description with full Free/Pro feature breakdown
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
+
 ### v1.5.13 (2026-11-27)
 
 - Unified the confirmed orange brand artwork across native, Web/PWA, Capacitor splash screens, and the public deployment repository, with platform-native rounded presentation
