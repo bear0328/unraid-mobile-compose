@@ -8,6 +8,8 @@
 #   bash install-compose-api.sh -y [apiKey]         # 跳过风险确认(自动化用)
 #   bash install-compose-api.sh --local-only -y <key>
 #         只用脚本同目录的本地文件,绝不走远程下载 —— Unraid OS 升级后的恢复/重装必用
+#   bash install-compose-api.sh --local-only --preserve-key -y
+#         已安装后端的升级/修复:保留现有 apikey 哈希,不读取或重写 API key
 #   UNRAID_API_KEY_FILE=/run/secrets/unraid_api_key bash install-compose-api.sh -y
 #         从权限受控的文件读 key,避免把明文 key 放进命令行
 #   UNRAID_HOST_ROOT=/tmp/fake-host bash install-compose-api.sh -y
@@ -34,7 +36,7 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.10/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/compose-api/api.php"
 # Compose Manager Plus 是 Pro 宿主后端唯一的第三方 Unraid 插件依赖;CA 插件本身不是依赖。
 # 固定到已审核的上游提交(Plus 2026.11.13a),避免 main 分支变化绕过发布审核。
 # 清单内的 txz 使用上游 release 固定版本 URL,并由插件机制校验 MD5。
@@ -48,7 +50,7 @@ host_path() { printf '%s%s' "$HOST_ROOT" "$1"; }
 PLUGIN_CLI="$(host_path /usr/local/sbin/plugin)"
 COMPOSE_PLUGIN_FILE="$(host_path /var/log/plugins/compose.manager.plg)"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="2ca57928e7796697d686ce4cec6920eac4ec1c5ac83c0a11a615caf6630a02a0"
+EXPECTED_API_SHA256="75e83194d46aadf54c72ee0889c0e60df365e983ba819de08b9ca1e2de1b7c20"
 EXPECTED_WORKER_SHA256="af1e7ca0db4807feebc6ba564c9630ee8d41580a6787ee8c28df90ca4849b150"
 
 PLUGIN_DIR="$(host_path /boot/config/plugins/unraid-mobile)"
@@ -101,13 +103,18 @@ ensure_compose_manager() {
 #               走远程会把宿主上未发布的本地修复(如 indexBuildLockValid)覆盖回旧版。
 ASSUME_YES=0
 LOCAL_ONLY=0
+PRESERVE_KEY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         -y|--yes) ASSUME_YES=1; shift ;;
         --local-only) LOCAL_ONLY=1; shift ;;
+        --preserve-key) PRESERVE_KEY=1; shift ;;
         *) break ;;
     esac
 done
+if [ "$PRESERVE_KEY" = "1" ] && [ $# -gt 0 ]; then
+    die "--preserve-key 不接受位置参数 apiKey;它会保留现有 key 哈希"
+fi
 if [ "$ASSUME_YES" != "1" ]; then
     cat << 'EOF'
 
@@ -128,27 +135,36 @@ fi
 ensure_compose_manager
 
 # ---------- 1. 拿 apiKey(参数 > 密钥文件 > 环境变量 > 交互输入) ----------
-APIKEY="${1:-}"
-if [ -z "$APIKEY" ] && [ -n "${UNRAID_API_KEY_FILE:-}" ]; then
-    [ -r "$UNRAID_API_KEY_FILE" ] || die "apiKey 文件不可读: $UNRAID_API_KEY_FILE"
-    APIKEY="$(cat "$UNRAID_API_KEY_FILE")"
+# --preserve-key 只用于已安装后端的升级/修复:现有哈希不可读时 fail closed,
+# 绝不退化成交互输入,避免 App/Web 后台任务挂在等待输入上。
+if [ "$PRESERVE_KEY" = "1" ]; then
+    [ -s "$PLUGIN_DIR/apikey" ] || die "--preserve-key: 现有 apikey 缺失或为空,请先按首次安装流程执行"
+    info "保留现有 apikey 哈希,不读取或重写 API key"
+else
+    APIKEY="${1:-}"
+    if [ -z "$APIKEY" ] && [ -n "${UNRAID_API_KEY_FILE:-}" ]; then
+        [ -r "$UNRAID_API_KEY_FILE" ] || die "apiKey 文件不可读: $UNRAID_API_KEY_FILE"
+        APIKEY="$(cat "$UNRAID_API_KEY_FILE")"
+    fi
+    APIKEY="${APIKEY:-${UNRAID_API_KEY:-}}"
+    if [ -z "$APIKEY" ]; then
+        read -r -s -p "输入 unRAID API 密钥(与 App 里填的 GraphQL key 相同,不回显): " APIKEY
+        echo
+    fi
+    [ -n "$APIKEY" ] || die "apiKey 为空"
 fi
-APIKEY="${APIKEY:-${UNRAID_API_KEY:-}}"
-if [ -z "$APIKEY" ]; then
-    read -r -s -p "输入 unRAID API 密钥(与 App 里填的 GraphQL key 相同,不回显): " APIKEY
-    echo
-fi
-[ -n "$APIKEY" ] || die "apiKey 为空"
 
 # ---------- 2. 写 key 文件 ----------
 # 【续 60】存 `sha256:<hex>` 前缀格式而非明文 —— flash 备份/诊断包外泄不泄 key 本身;
 # api.php 按前缀识别哈希(无前缀的旧明文格式也兼容)
 mkdir -p "$PLUGIN_DIR"
-# 【续 50 D4-1】umask 077 再创建,消除文件先 0644 后 chmod 600 的窗口期
-(umask 077; printf 'sha256:%s' "$(printf '%s' "$APIKEY" | sha256sum | cut -d' ' -f1)" > "$PLUGIN_DIR/apikey")
-chmod 600 "$PLUGIN_DIR/apikey" 2>/dev/null \
-    || info "提示: /boot 可能是 FAT,无法设置逐文件 600;哈希内容有效,权限由挂载选项控制"
-info "key 文件: $PLUGIN_DIR/apikey (sha256 哈希,不存明文)"
+if [ "$PRESERVE_KEY" != "1" ]; then
+    # 【续 50 D4-1】umask 077 再创建,消除文件先 0644 后 chmod 600 的窗口期
+    (umask 077; printf 'sha256:%s' "$(printf '%s' "$APIKEY" | sha256sum | cut -d' ' -f1)" > "$PLUGIN_DIR/apikey")
+    chmod 600 "$PLUGIN_DIR/apikey" 2>/dev/null \
+        || info "提示: /boot 可能是 FAT,无法设置逐文件 600;哈希内容有效,权限由挂载选项控制"
+    info "key 文件: $PLUGIN_DIR/apikey (sha256 哈希,不存明文)"
+fi
 
 # ---------- 3. 装 api.php ----------
 if [ -f "$SCRIPT_DIR/api.php" ]; then

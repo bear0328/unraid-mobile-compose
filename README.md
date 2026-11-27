@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.10/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.10/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -221,6 +221,13 @@ that mode a missing Compose Manager Plus causes a clear error instead of a netwo
 
 Compose already mounts php-fpm.sock. With `docker run` or a custom template, add that mount and recreate
 the container; the Compose tab and CPU temperature (once Pro is activated) are then ready.
+
+### Later upgrades
+
+- The Docker container and host agent are separate components. The native app can update the image through **Containers → unraid-mobile → Update Image**. The `appVersion` shown in Settings belongs to the running host `api.php`; it does not prove that the container image is current.
+- Starting with v1.5.11, Pro users can synchronize the host agent from **Settings → About** in either the native app or Web. The updater downloads only a pinned official release, verifies every file with SHA-256 before installation, and preserves the existing API-key hash and License receipt.
+- An independent host worker survives client disconnects and supports request-ID recovery. Managed files are backed up before installation, with rollback attempted after installation or version-verification failures. Downgrades are rejected.
+- **Initial installation still requires root in the Unraid web terminal or SSH. A v1.5.10 or older agent does not know the synchronization endpoint and must be manually updated to v1.5.11 one final time before later releases can synchronize in place.**
 
 ## Build from source
 
@@ -256,6 +263,17 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.5.11 (2026-11-27)
+
+- Native App and Web Settings now synchronize the Pro host agent from a pinned official release, with full-package SHA-256 verification, pre-install backups, rollback, preserved API-key/License credentials, and request-ID recovery
+- Web activation failures now show visible errors and always clear the busy state; host-authorization synchronization failures link directly to the host-agent updater
+- Coordinated with TestFlight 2.0.0 (141). Initial installation still requires root; a v1.5.10 or older host agent must be manually updated to v1.5.11 one final time
+
+### TestFlight 2.0.0 (141) (2026-11-27)
+
+- Added native Pro host-agent synchronization with progress logs, disconnect recovery, clear rollback results, and neutral handling when the outcome cannot be confirmed
+- Settings now identifies `appVersion` as the host-agent version rather than the Docker image version; coordinated with Web/Docker and compose-api v1.5.11
 
 ### TestFlight 2.0.0 (140) (2026-11-27)
 

@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.10/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.10/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.11/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -192,6 +192,13 @@ bootstrap 默认通过 `http://127.0.0.1/graphql` 校验 API key；如本机 Gra
 
 Compose 已默认挂载 php-fpm.sock；使用 `docker run` 或自定义模板时需自行添加该挂载并重建容器，
 Compose tab 与 CPU 温度(Pro 激活后)即可用。
+
+### 后续升级
+
+- Docker 容器与宿主后端是两个独立组件。原生 App 可在「容器 → unraid-mobile → 更新镜像」更新容器；设置页显示的 `appVersion` 是当前宿主 `api.php` 版本，不代表镜像已经更新。
+- 自 v1.5.11 起，Pro 用户可在原生 App 或 Web 的「设置 → 关于」直接同步宿主后端。同步仅使用官方部署仓固定版本发布包，全文件 SHA-256 校验通过后才安装，并保留现有 API Key 哈希与 License 凭证。
+- 任务由独立宿主后台 worker 执行，断线后按请求 ID 恢复；安装前备份管理文件，安装或版本复核失败会尝试回滚。此入口不允许降级。
+- **首次安装仍必须在 Unraid 网页终端或 SSH 以 root 执行上述命令。v1.5.10 及更早后端不认识同步接口，需要最后手动升级一次到 v1.5.11，之后版本才能直接页内同步。**
 
 ## 从源码构建
 
@@ -227,6 +234,17 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### v1.5.11(2026-11-27)
+
+- 原生 App 与 Web 设置页支持 Pro 宿主后端同步，使用官方固定版本发布包、全文件 SHA-256 校验、安装前备份和失败回滚，保留 API Key/License 凭证并支持请求 ID 恢复
+- Web 激活异常现在显示明确错误并始终结束「验证中」；宿主授权同步失败可直接跳转宿主后端同步入口
+- 与 TestFlight 2.0.0(141) 协调发布；首次安装仍需 root，v1.5.10 及更早宿主后端需最后手动升级一次到 v1.5.11
+
+### TestFlight 2.0.0(141)(2026-11-27)
+
+- 新增原生 Pro 宿主后端同步，支持进度日志、断线恢复、明确回滚结果，以及无法确认结果时的中性提示
+- 设置页明确 `appVersion` 是宿主后端版本而非 Docker 镜像版本；与 Web/Docker、compose-api v1.5.11 协调发布
 
 ### TestFlight 2.0.0(140)(2026-11-27)
 

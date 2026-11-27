@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.11] - 2026-11-27
+
+### Added
+
+- Native App and Web Settings can now synchronize the Pro host agent. They download only a pinned official release, verify every file with SHA-256, install through an independent background worker, preserve the API-key hash and License receipt, and provide logs plus request-ID recovery after disconnects
+- Host upgrades add pre-install backups, version/live-file verification, rollback on failure, downgrade prevention, and release manifests covering both the installer and every payload file
+
+### Fixed
+
+- Unexpected Web activation errors now roll back and always clear the busy state. Host-agent authorization failures show a visible warning and a link to host synchronization instead of being silently ignored
+- Settings now labels `capabilities.appVersion` as the host-agent version rather than implying it is the running Docker image version
+
+### Notes
+
+- Coordinated with TestFlight 2.0.0 (141). Initial installation still requires root in the Unraid web terminal or SSH. A v1.5.10 or older host agent must be manually updated to v1.5.11 one final time; later releases can synchronize in place
+
+## [TestFlight 2.0.0 (141)] - 2026-11-27
+
+### Added
+
+- Native Settings can synchronize the Pro host agent from a pinned official release, with full-package SHA-256 verification, preserved API-key/License credentials, progress logs, request-ID recovery, and clear failure or indeterminate-outcome states
+
+### Changed
+
+- Coordinated with Web/Docker and compose-api v1.5.11. Settings now identifies `capabilities.appVersion` as the host-agent version, not the running Docker image version
+
+### Notes
+
+- Initial installation still requires root in the Unraid web terminal or SSH. A v1.5.10 or older host agent must be manually updated to v1.5.11 one final time before later releases can synchronize in place
+
 ## [TestFlight 2.0.0 (140)] - 2026-11-27
 
 ### Added

@@ -25,7 +25,7 @@ declare(strict_types=1);
  *       外泄不泄 key 本身;无前缀的旧明文格式自动兼容(重跑安装脚本即升级为哈希)。
  *
  * 端点:
- *   GET  ?action=capabilities             宿主能力自检:App/Docker 配套版本、Unraid/PHP 版本、api.php 正本与执行位置
+ *   GET  ?action=capabilities             宿主能力自检:当前宿主后端版本、页内同步能力、Unraid/PHP 版本、api.php 正本与执行位置
  *                                         sha256、go 恢复错误日志(restore-error.log)、各 Unraid
  *                                         内部依赖可用性。只读、不执行外部命令、不联网;
  *                                         前端按 deps 降级,OS 升级后不必逐项人工排查
@@ -59,6 +59,9 @@ declare(strict_types=1);
  *                                         普通容器异步更新;服务端复核 ID/Compose/模板并支持幂等恢复
  *   GET  ?action=dockerlog&name=X&requestId=X
  *                                         更新任务 jobId/state/running/log/result;异常退出不冒充确定失败
+ *   PUT  {action:hostupdate,targetVersion,requestId}
+ *                                         固定官方 tag 的宿主后端异步同步;全量校验、保留凭据、失败回滚
+ *   GET  ?action=hostupdatelog&requestId=X  宿主同步任务状态/日志;支持幂等恢复与 409 附着
  *   GET  ?action=externalprojects          非 compose.manager 的 Compose 项目与容器名
  *   PUT  {action:externalupdate,name,expectedId,requestId}
  *                                         外部 Compose 项目异步 pull + 重建;路径只取实时容器标签
@@ -91,8 +94,8 @@ declare(strict_types=1);
  *       对所有 POST 强制 webGui CSRF 校验,无 token 静默 exit(空 200);PUT 不受检查。
  */
 
-// 与 package.json 同步；capabilities 向 App 报告当前配套 Docker/宿主后端版本。
-const APP_VERSION = '1.5.10';
+// 与 package.json 同步；capabilities 报告当前执行的宿主后端版本,不能据此推断容器镜像版本。
+const APP_VERSION = '1.5.11';
 const PROJECTS_DIR = '/boot/config/plugins/compose.manager/projects';
 // 【续 49.2 2026-07-19】key 文件挪到 flash 盘统一路径 — 消灭最后一个 per-user 路径
 // (appdata 目录名因用户/容器名而异,/boot/config 全 unRAID 一致,api.php 由此零参数化)
@@ -139,6 +142,9 @@ const DOCKER_UPDATE_SCRIPT = '/usr/local/emhttp/plugins/dynamix.docker.manager/s
 const DOCKER_UPDATE_SETSID = '/usr/bin/setsid';
 const DOCKER_UPDATE_START_GRACE_SEC = 30;
 const EXTERNAL_UPDATE_DIR = '/tmp/unraid-mobile-externalupdate';
+// 宿主后端自升级:独立 tmpfs 任务,下载固定 tag 发布包并全量校验后调用既有幂等安装器。
+const HOST_UPDATE_DIR = '/tmp/unraid-mobile-hostupdate';
+const HOST_UPDATE_REPO = 'https://raw.githubusercontent.com/bear0328/unraid-mobile-compose';
 const TEMPLATE_USER_DIR = '/boot/config/plugins/dockerMan/templates-user';
 const PLUGIN_WORK_DIR = '/tmp/unraid-mobile-plugins';
 const PLUGIN_WORKER = '/usr/local/emhttp/plugins/compose.manager/plugin-worker.php';
@@ -194,12 +200,12 @@ const PRO_GET_ACTIONS = [
     'cputemp', 'vminfo', 'vmstats', 'vmlog',
     'plugins', 'pluginjob', 'caapps', 'catemplate', 'cajob',
     'dockertemplate', 'dockereditjob', 'list', 'get', 'log', 'dockerlog',
-    'externalprojects', 'externalupdatelog',
+    'externalprojects', 'externalupdatelog', 'hostupdatelog',
 ];
 const PRO_PUT_ACTIONS = [
     'plugincheck', 'pluginupdate', 'pluginremove', 'pluginupdateall', 'plugininstall',
     'cainstall', 'dockeredit', 'autostart', 'indexcfg', 'reindex',
-    'dockerupdate', 'externalupdate', 'serverpower', 'up', 'down', 'restart', 'pull', 'rebuild',
+    'dockerupdate', 'externalupdate', 'hostupdate', 'serverpower', 'up', 'down', 'restart', 'pull', 'rebuild',
 ];
 const DISK_WAKE_LOCK_FILE = '/tmp/unraid-mobile-diskwake.lock';
 const EMCMD = '/usr/local/sbin/emcmd';
@@ -2399,6 +2405,243 @@ function runDockerUpdateAsync(string $name, string $tmpl, array $container,
     $queued = true;
     audit('dockerupdate', $name, 'queued');
     return ['async' => true, 'jobId' => $jobId, 'requestId' => $requestId];
+}
+
+// ==================== 宿主后端自升级 ====================
+
+/** 只允许语义化三段版本;不许通过客户端指定任意 URL、分支或低于当前后端的版本。 */
+function hostUpdateTargetVersion(mixed $value): string
+{
+    if (!is_string($value)) fail(400, 'targetVersion 必须是 x.y.z 版本号');
+    $version = ltrim(trim($value), 'vV');
+    if (!preg_match('/^\d+\.\d+\.\d+$/D', $version)) {
+        fail(400, 'targetVersion 必须是 x.y.z 版本号');
+    }
+    if (version_compare($version, APP_VERSION, '<')) {
+        fail(400, '不允许通过此入口降级宿主后端');
+    }
+    return $version;
+}
+
+function readHostUpdateStatus(): array
+{
+    $dir = HOST_UPDATE_DIR;
+    $status = readJsonFile($dir . '/status.json');
+    $result = readJsonFile($dir . '/result.json');
+    $lockExists = file_exists($dir . '/op-lock');
+    if (!is_array($status) || !preg_match('/^[a-f0-9]{32}$/D', (string) ($status['id'] ?? ''))) {
+        $running = $lockExists && $result === null;
+        return [
+            'jobId' => null, 'requestId' => null, 'targetVersion' => null,
+            'state' => $result !== null ? (($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed')
+                : ($running ? 'running' : 'unknown'),
+            'running' => $running, 'result' => $result, 'message' => null,
+        ];
+    }
+    $jobId = (string) $status['id'];
+    $state = (string) ($status['state'] ?? 'queued');
+    $requestId = (string) ($status['requestId'] ?? '');
+    $targetVersion = (string) ($status['targetVersion'] ?? '');
+    $terminal = in_array($state, ['succeeded', 'failed', 'unknown'], true);
+    $alive = dockerUpdateProcessGroupAlive($status);
+    if ($terminal) {
+        if ($alive === false && trim((string) @file_get_contents($dir . '/op-lock')) === $jobId) {
+            @unlink($dir . '/op-lock');
+        }
+        return [
+            'jobId' => $jobId, 'requestId' => $requestId !== '' ? $requestId : null,
+            'targetVersion' => $targetVersion !== '' ? $targetVersion : null,
+            'state' => $state, 'running' => false, 'result' => $result,
+            'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+        ];
+    }
+    if ($state === 'queued' && (int) ($status['pid'] ?? 0) <= 0) {
+        if ($lockExists) $alive = true;
+    } elseif ($alive === null && $lockExists) {
+        $alive = true;
+    }
+    if ($alive === true) {
+        return [
+            'jobId' => $jobId, 'requestId' => $requestId !== '' ? $requestId : null,
+            'targetVersion' => $targetVersion !== '' ? $targetVersion : null,
+            'state' => $state === 'queued' ? 'queued' : 'running',
+            'running' => true, 'result' => null, 'message' => null,
+        ];
+    }
+    if (is_array($result)) {
+        $state = ($result['result'] ?? '') === 'success' ? 'succeeded' : 'failed';
+    } else {
+        $state = 'unknown';
+        $status['message'] = '宿主升级进程已异常退出,无法确认安装结果;请查看日志并核对后端版本后再操作';
+    }
+    $status['state'] = $state;
+    $status['updatedAt'] = time();
+    writePluginJson($dir . '/status.json', $status);
+    if (trim((string) @file_get_contents($dir . '/op-lock')) === $jobId) @unlink($dir . '/op-lock');
+    return [
+        'jobId' => $jobId, 'requestId' => $requestId !== '' ? $requestId : null,
+        'targetVersion' => $targetVersion !== '' ? $targetVersion : null,
+        'state' => $state, 'running' => false, 'result' => $result,
+        'message' => is_string($status['message'] ?? null) ? $status['message'] : null,
+    ];
+}
+
+/**
+ * worker 在独立进程组运行,替换 api.php 不会中断安装。
+ * 发布包只来自官方部署仓固定 vX.Y.Z tag;SHA256SUMS 必须覆盖全部待执行/安装文件。
+ * --local-only 让安装器只使用已校验 payload,--preserve-key 保留现有 API key 哈希。
+ * 安装失败或版本复核失败时恢复 boot/exec 管理文件和 go,避免半升级状态。
+ */
+function hostUpdateJobScript(array $job): string
+{
+    $jobId = (string) $job['id'];
+    return '#!/bin/sh' . "\n"
+        . 'set -u' . "\n"
+        . 'opLock=' . escapeshellarg(HOST_UPDATE_DIR . '/op-lock') . "\n"
+        . 'statusPath=' . escapeshellarg(HOST_UPDATE_DIR . '/status.json') . "\n"
+        . 'resultPath=' . escapeshellarg(HOST_UPDATE_DIR . '/result.json') . "\n"
+        . 'jobId=' . escapeshellarg($jobId) . "\n"
+        . 'requestId=' . escapeshellarg((string) $job['requestId']) . "\n"
+        . 'targetVersion=' . escapeshellarg((string) $job['targetVersion']) . "\n"
+        . 'createdAt=' . (int) $job['createdAt'] . "\n"
+        . 'repoBase=' . escapeshellarg(HOST_UPDATE_REPO) . "\n"
+        . 'if [ "${1:-}" != "--start" ] || [ "${2:-}" != "$jobId" ]; then exit 64; fi' . "\n"
+        . 'if [ "${3:-}" != "--grouped" ]; then exec /usr/bin/setsid /bin/sh "$0" --start "$jobId" --grouped; fi' . "\n"
+        . 'cd ' . escapeshellarg(HOST_UPDATE_DIR) . ' || exit 1' . "\n"
+        . 'exec > update.log 2>&1' . "\n"
+        . 'write_state() {' . "\n"
+        . '  state="$1"; message="${2:-}"; statRest="$(sed "s/.*) //" "/proc/$$/stat" 2>/dev/null)"' . "\n"
+        . '  set -- $statRest; pgid="${3:-0}"; started="${20:-}"; tmp="$statusPath.tmp.$$"' . "\n"
+        . '  printf \'%s\n\' "{\"id\":\"$jobId\",\"requestId\":\"$requestId\",\"targetVersion\":\"$targetVersion\",\"createdAt\":$createdAt,\"updatedAt\":$(date +%s),\"pid\":$$,\"pgid\":${pgid:-0},\"startedTicks\":\"${started:-}\",\"state\":\"$state\",\"message\":\"$message\"}" > "$tmp" && mv -f "$tmp" "$statusPath"' . "\n"
+        . '}' . "\n"
+        . 'write_result() {' . "\n"
+        . '  ec="$1"; [ "$ec" -eq 0 ] && result=success || result=error; tmp="$resultPath.tmp.$$"' . "\n"
+        . '  printf \'{"result":"%s","exit_code":%d,"operation":"hostupdate","timestamp":"%s"}\' "$result" "$ec" "$(date +%Y-%m-%dT%H:%M:%S%z)" > "$tmp" && mv -f "$tmp" "$resultPath"' . "\n"
+        . '}' . "\n"
+        . 'cleanup() { if [ -f "$opLock" ] && [ "$(cat "$opLock")" = "$jobId" ]; then rm -f "$opLock"; fi; }' . "\n"
+        . 'trap cleanup EXIT' . "\n"
+        . 'write_state running' . "\n"
+        . 'ec=0; prepared=0; stage="$PWD/payload"; backup="$PWD/backup"' . "\n"
+        . 'rm -rf "$stage"; mkdir -p "$stage" || ec=70' . "\n"
+        . 'base="$repoBase/v$targetVersion/compose-api"' . "\n"
+        . 'files="install-compose-api.sh api.php plugin-worker.php update-status.php update-file-index.sh register-index-cron.sh SHA256SUMS"' . "\n"
+        . 'echo "[$(date +%H:%M:%S)] 下载宿主后端 v$targetVersion 固定发布包"' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  for f in $files; do' . "\n"
+        . '    echo "下载 $f"; curl -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 10 --max-time 180 "$base/$f" -o "$stage/$f" || { ec=$?; break; }' . "\n"
+        . '  done' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  echo "校验发布包 SHA-256"; (cd "$stage" && sha256sum -c SHA256SUMS) || ec=$?' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then php -l "$stage/api.php" >/dev/null && php -l "$stage/plugin-worker.php" >/dev/null && php -l "$stage/update-status.php" >/dev/null || ec=$?; fi' . "\n"
+        . 'boot=/boot/config/plugins/unraid-mobile; execDir=/usr/local/emhttp/plugins/compose.manager' . "\n"
+        . 'managed="api.php plugin-worker.php update-status.php update-file-index.sh register-index-cron.sh"' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  rm -rf "$backup"; mkdir -p "$backup/boot" "$backup/exec" || ec=70' . "\n"
+        . '  for f in $managed; do' . "\n"
+        . '    [ ! -f "$boot/$f" ] || cp -p "$boot/$f" "$backup/boot/$f" || { ec=$?; break; }' . "\n"
+        . '    [ ! -f "$execDir/$f" ] || cp -p "$execDir/$f" "$backup/exec/$f" || { ec=$?; break; }' . "\n"
+        . '  done' . "\n"
+        . '  [ ! -f /boot/config/go ] || cp -p /boot/config/go "$backup/go" || ec=$?' . "\n"
+        . '  [ "$ec" -ne 0 ] || prepared=1' . "\n"
+        . 'fi' . "\n"
+        . 'rollback() {' . "\n"
+        . '  echo "安装失败,恢复升级前文件"' . "\n"
+        . '  for f in $managed; do' . "\n"
+        . '    if [ -f "$backup/boot/$f" ]; then cp -p "$backup/boot/$f" "$boot/$f"; else rm -f "$boot/$f"; fi' . "\n"
+        . '    if [ -f "$backup/exec/$f" ]; then cp -p "$backup/exec/$f" "$execDir/$f"; else rm -f "$execDir/$f"; fi' . "\n"
+        . '  done' . "\n"
+        . '  if [ -f "$backup/go" ]; then cp -p "$backup/go" /boot/config/go; else rm -f /boot/config/go; fi' . "\n"
+        . '}' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  echo "执行宿主安装器(保留 API key 与 License 凭证)"' . "\n"
+        . '  bash "$stage/install-compose-api.sh" --local-only --preserve-key -y; ec=$?' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -eq 0 ]; then' . "\n"
+        . '  grep -q "const APP_VERSION = \'$targetVersion\';" "$boot/api.php" || ec=65' . "\n"
+        . '  cmp -s "$boot/api.php" "$execDir/api.php" || ec=66' . "\n"
+        . '  php -l "$execDir/api.php" >/dev/null || ec=$?' . "\n"
+        . 'fi' . "\n"
+        . 'if [ "$ec" -ne 0 ]; then' . "\n"
+        . '  if [ "$prepared" = "1" ]; then rollback; write_state failed "安装或版本复核失败,已尝试恢复升级前文件"; else write_state failed "下载或校验失败,未改动宿主后端"; fi' . "\n"
+        . 'else write_state succeeded; fi' . "\n"
+        . 'write_result "$ec"' . "\n"
+        . 'printf \'[%s] action=hostupdate target=%s result=%s\n\' "$(date +%Y-%m-%dT%H:%M:%S%z)" "$targetVersion" "$([ "$ec" -eq 0 ] && echo ok || echo fail)" >> ' . escapeshellarg(AUDIT_LOG) . "\n"
+        . 'exit "$ec"' . "\n";
+}
+
+function runHostUpdateAsync(string $targetVersion, string $requestId): array
+{
+    if (!is_executable(DOCKER_UPDATE_SETSID)) fail(503, '宿主缺少 setsid,无法安全跟踪升级任务');
+    if (!is_dir(HOST_UPDATE_DIR) && !@mkdir(HOST_UPDATE_DIR, 0700, true) && !is_dir(HOST_UPDATE_DIR)) {
+        fail(500, '宿主升级任务目录创建失败');
+    }
+    $existing = readHostUpdateStatus();
+    if (is_string($existing['requestId'] ?? null) && hash_equals($requestId, $existing['requestId'])) {
+        if (($existing['targetVersion'] ?? null) !== $targetVersion) {
+            fail(409, 'requestId 已用于另一个目标版本,不能重复提交');
+        }
+        return [
+            'async' => true, 'jobId' => $existing['jobId'], 'requestId' => $requestId,
+            'targetVersion' => $targetVersion, 'duplicate' => true,
+        ];
+    }
+    if ($existing['running'] === true) fail(409, '宿主后端已有升级任务进行中');
+
+    $jobId = bin2hex(random_bytes(16));
+    $lockFile = HOST_UPDATE_DIR . '/op-lock';
+    $lock = @fopen($lockFile, 'x');
+    if ($lock === false) fail(409, '宿主后端已有升级任务进行中');
+    if (@fwrite($lock, $jobId) === false) {
+        @fclose($lock); @unlink($lockFile);
+        fail(500, '宿主升级任务锁写入失败');
+    }
+    fclose($lock);
+    $createdAt = time();
+    $job = [
+        'id' => $jobId, 'requestId' => $requestId, 'targetVersion' => $targetVersion,
+        'createdAt' => $createdAt,
+    ];
+    $queued = false;
+    register_shutdown_function(static function () use (&$queued, $lockFile, $jobId): void {
+        if (!$queued && trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+    });
+    @unlink(HOST_UPDATE_DIR . '/result.json');
+    writePluginJson(HOST_UPDATE_DIR . '/status.json', [
+        'id' => $jobId, 'requestId' => $requestId, 'targetVersion' => $targetVersion,
+        'createdAt' => $createdAt, 'updatedAt' => $createdAt,
+        'pid' => 0, 'pgid' => 0, 'startedTicks' => '', 'state' => 'queued',
+    ]);
+    $script = HOST_UPDATE_DIR . '/job.sh';
+    if (@file_put_contents($script, hostUpdateJobScript($job), LOCK_EX) === false) fail(500, '升级任务脚本写入失败');
+    @chmod($script, 0700);
+    @file_put_contents(HOST_UPDATE_DIR . '/update.log', '', LOCK_EX);
+    $spawnOutput = [];
+    $spawnCode = 1;
+    exec(PATH_ENV . ' nohup /bin/sh ' . escapeshellarg($script)
+        . ' --start ' . escapeshellarg($jobId) . ' > /dev/null 2>&1 < /dev/null & echo $!',
+        $spawnOutput, $spawnCode);
+    usleep(150000);
+    $launchPid = (int) end($spawnOutput);
+    $latest = readJsonFile(HOST_UPDATE_DIR . '/status.json');
+    $latestState = is_array($latest) ? (string) ($latest['state'] ?? '') : '';
+    $started = in_array($latestState, ['running', 'succeeded', 'failed'], true);
+    if ($spawnCode !== 0 || (!$started && !dockerUpdatePidAlive($launchPid))) {
+        $error = ['result' => 'error', 'exit_code' => 1, 'operation' => 'hostupdate', 'timestamp' => date('c')];
+        writePluginJson(HOST_UPDATE_DIR . '/result.json', $error);
+        if (is_array($latest)) {
+            $latest['state'] = 'failed';
+            $latest['message'] = '宿主升级 worker 启动失败,未执行安装';
+            writePluginJson(HOST_UPDATE_DIR . '/status.json', $latest);
+        }
+        if (trim((string) @file_get_contents($lockFile)) === $jobId) @unlink($lockFile);
+        $queued = true;
+        fail(500, '宿主升级 worker 启动失败,未执行安装');
+    }
+    $queued = true;
+    audit('hostupdate', $targetVersion, 'queued');
+    return ['async' => true, 'jobId' => $jobId, 'requestId' => $requestId, 'targetVersion' => $targetVersion];
 }
 
 // ==================== 外部 Compose 项目更新 ====================
@@ -5578,6 +5821,7 @@ function readCapabilities(): array
 
     return [
         'appVersion' => APP_VERSION,
+        'hostUpdateSupported' => true,
         'unraidVersion' => $unraidVersion,
         'phpVersion' => PHP_VERSION,
         'apiSha256' => $sha(__FILE__),
@@ -5784,6 +6028,27 @@ if ($method === 'GET') {
         ok(externalUpdateLog($_GET['requestId'] ?? null, $_GET['name'] ?? null, $_GET['project'] ?? null));
     }
 
+    if ($action === 'hostupdatelog') {
+        if (!is_dir(HOST_UPDATE_DIR)) fail(404, '无宿主后端升级记录');
+        $rawRequestId = $_GET['requestId'] ?? null;
+        $requestId = $rawRequestId !== null ? dockerUpdateRequestId($rawRequestId) : null;
+        $status = readHostUpdateStatus();
+        if ($requestId !== null && (!is_string($status['requestId'] ?? null)
+            || !hash_equals($requestId, $status['requestId']))) {
+            fail(409, '当前宿主升级任务与原请求不匹配,请刷新状态后重试');
+        }
+        ok([
+            'jobId' => $status['jobId'],
+            'requestId' => $status['requestId'],
+            'targetVersion' => $status['targetVersion'],
+            'state' => $status['state'],
+            'message' => $status['message'],
+            'log' => tailFile(HOST_UPDATE_DIR . '/update.log'),
+            'running' => $status['running'],
+            'result' => $status['result'],
+        ]);
+    }
+
     // 更新状态由任务记录和真实进程组推导;旧字段 running/log/result 保持兼容。
     if ($action === 'dockerlog') {
         $name = (string) ($_GET['name'] ?? '');
@@ -5957,6 +6222,12 @@ if ($method === 'PUT' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''),
 
     if ($action === 'externalupdate') {
         ok(startExternalUpdate($body));
+    }
+
+    if ($action === 'hostupdate') {
+        $targetVersion = hostUpdateTargetVersion($body['targetVersion'] ?? null);
+        $requestId = dockerUpdateRequestId($body['requestId'] ?? null);
+        ok(runHostUpdateAsync($targetVersion, $requestId));
     }
 
     // 服务器电源(重启/关机):高危不可逆。严格白名单 + 审计先写 + nohup 异步下发,
