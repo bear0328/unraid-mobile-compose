@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (146)] - 2026-11-27
+
+### Fixed
+
+- Fixed a `0x8BADF00D` watchdog termination that could occur when the app entered the background or the system terminated its process during playback, because VLC destruction blocked the main thread
+- Retired `VLCMediaPlayer` instances now transfer their final reference to a dedicated serial background queue across track changes, source retries, MPEG-TS rebuilds, and player dismissal, without changing background-audio or system-playback behavior
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed
+- All 944 native XCTest cases pass. Real iPhone playback, backgrounding, and termination scenarios still require validation with TestFlight 146
+
 ## [1.5.12] - 2026-11-27
 
 ### Changed

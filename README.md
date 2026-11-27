@@ -264,6 +264,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (146) (2026-11-27)
+
+- Fixed a `0x8BADF00D` watchdog termination caused by VLC destruction blocking the main thread during backgrounding or process termination. Retired players now release on a dedicated serial background queue without changing background-audio behavior
+- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed. All 944 native XCTest cases pass; the original real-iPhone scenario still requires validation with build 146
+
 ### v1.5.12 (2026-11-27)
 
 - Native Settings now uses seven groups with unified Pro and credential flows, dedicated host-agent status, snapshot-bound connection tests, verified Keychain operations, and transactional configuration restore. Polling and appearance preferences join automatic backups

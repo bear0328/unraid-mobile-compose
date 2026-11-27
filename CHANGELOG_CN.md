@@ -2,6 +2,18 @@
 
 本文件记录项目的所有重要变更,格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [TestFlight 2.0.0 (146)] - 2026-11-27
+
+### 修复
+
+- 修复真机播放过程中 App 退到后台或系统结束进程时，可能因 VLC 销毁阻塞主线程而被 `0x8BADF00D` 看门狗强杀的问题
+- 旧 `VLCMediaPlayer` 的最后引用转交专用串行后台队列，覆盖切歌、换源、MPEG-TS 重建和关闭播放页，不改变后台音频与系统播放控制行为
+
+### 说明
+
+- 仅原生 App 更新，Web、Docker 和 compose-api 仍为 v1.5.12，无需重跑安装脚本
+- 完整原生 XCTest 944/944 通过；真实 iPhone 播放、退后台与退出场景仍需在 TestFlight 146 验收
+
 ## [1.5.12] - 2026-11-27
 
 ### 变更
