@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -234,6 +234,16 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(157)(2026-11-28)
+
+- 宿主后端手动升级改为一个「复制升级命令」按钮，使用全新临时目录和固定版本安装器，保留 API Key，避免重复安装旧版
+- Docker 更新直接引导到 App 容器详情；与 Web/Docker、compose-api v1.5.14 协调发布，完整 XCTest 961/961 通过
+
+### v1.5.14(2026-11-28)
+
+- App 与 Web 提供一键复制的手动宿主升级命令，使用全新临时目录和固定版本安装器，避免复用旧 installer 中的 `api.php`
+- compose-api 仅将 `APP_VERSION` 更新为 1.5.14，无新增宿主功能；v1.5.13 宿主可页内同步升级
 
 ### TestFlight 2.0.0(156)(2026-11-28)
 

@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.14] - 2026-11-28
+
+### Changed
+
+- Simplified manual upgrades across the native app and Web: Docker updates point to the native container detail, while legacy host agents offer a single copyable pinned-version upgrade command
+- The copied command uses a fresh temporary directory instead of reusing an old installer's `api.php`, preserves the existing API key, and enables in-app synchronization for later releases
+
+### Notes
+
+- Coordinated with TestFlight 2.0.0 (157). compose-api only advances `APP_VERSION` to 1.5.14 and adds no host functionality; v1.5.13 hosts can synchronize in place
+- Full native XCTest 961/961 and Vitest 1952/1952 pass, together with lint and production build checks. Real-device copy and terminal execution remain subject to user acceptance
+
+## [TestFlight 2.0.0 (157)] - 2026-11-28
+
+### Changed
+
+- Replaced the legacy host-agent instructions with one Copy Upgrade Command button, using a fresh temporary directory and pinned installer while preserving the existing API key
+- Docker updates now point directly to the native container detail instead of showing multiple Compose or verification commands
+
+### Notes
+
+- Coordinated with Web/Docker and compose-api v1.5.14. All 961 native XCTest cases pass; real-device copy and terminal execution remain subject to user acceptance
+
 ## [TestFlight 2.0.0 (155)] - 2026-11-28
 
 ### Changed

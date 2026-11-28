@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.13/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -263,6 +263,16 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (157) (2026-11-28)
+
+- Simplified legacy host-agent upgrades to one Copy Upgrade Command button, using a fresh temporary directory and pinned installer while preserving the API key and avoiding an old payload
+- Docker updates point directly to the native container detail. Coordinated with Web/Docker and compose-api v1.5.14; all 961 native XCTest cases pass
+
+### v1.5.14 (2026-11-28)
+
+- Native and Web now provide a copyable manual host-agent upgrade command with a fresh temporary directory and pinned installer, preventing reuse of an old installer's `api.php`
+- compose-api only advances `APP_VERSION` to 1.5.14 with no new host functionality; v1.5.13 hosts can synchronize in place
 
 ### TestFlight 2.0.0 (156) (2026-11-28)
 
