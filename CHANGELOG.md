@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.15] - 2026-11-28
+
+### Fixed
+
+- Rerunning the installer with an existing `apikey` now preserves it by default instead of prompting or overwriting it. First-time installation is unchanged, and only an explicit `--reset-key` rotates the key, preventing upgrades from breaking host authorization on Web or native devices
+
+### Changed
+
+- Native host-agent 401/403 responses now show API Key Mismatch with a direct Edit Server action instead of appearing unavailable or upgradable
+- Connection checks separate GraphQL and host-agent authorization. A missing or unavailable host agent no longer blocks saving for free features
+
+### Notes
+
+- Coordinated with TestFlight 2.0.0 (158). compose-api only updates the installer's key-preservation policy and version number; v1.5.14 hosts can synchronize in place
+- Full native XCTest 965/965 and Vitest 1954/1954 pass, together with lint, production build, and release-manifest verification. Real-device authorization recovery remains subject to user acceptance
+
+## [TestFlight 2.0.0 (158)] - 2026-11-28
+
+### Changed
+
+- Host authentication failures now show API Key Mismatch and link directly to Edit Server for key recovery
+- Connection checks distinguish GraphQL from host-agent authorization, so a successful GraphQL check no longer implies host-agent acceptance
+
+### Notes
+
+- Coordinated with Web/Docker and compose-api v1.5.15. All 965 native XCTest cases pass; real-device authorization recovery remains subject to user acceptance
+
 ## [1.5.14] - 2026-11-28
 
 ### Changed

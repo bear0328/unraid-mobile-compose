@@ -177,9 +177,9 @@ Web 与原生端支持 Community Applications 搜索、分类、详情、HTTPS `
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.15/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.15/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -234,6 +234,16 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(158)(2026-11-28)
+
+- 宿主认证失败明确显示「API Key 不匹配」，可直接跳转编辑服务器；连接测试分别展示 GraphQL 与宿主授权，免费功能不受宿主未安装影响
+- 与 Web/Docker、compose-api v1.5.15 协调发布，完整 XCTest 965/965 通过
+
+### v1.5.15(2026-11-28)
+
+- 已有 `apikey` 时安装器默认保留 API Key，只有显式 `--reset-key` 才轮换，防止普通升级意外破坏 Web/App 的宿主授权
+- 原生连接测试与错误提示区分 GraphQL、宿主授权和网络问题；v1.5.14 宿主可页内同步升级
 
 ### TestFlight 2.0.0(157)(2026-11-28)
 

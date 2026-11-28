@@ -3,9 +3,11 @@
 #
 # 在 unRAID 宿主上以 root 运行,幂等(重复执行安全)。
 #
-#   bash install-compose-api.sh <unRAID-apiKey>     # 直接给 key
-#   bash install-compose-api.sh                     # 交互式输入 key(不回显)
-#   bash install-compose-api.sh -y [apiKey]         # 跳过风险确认(自动化用)
+#   bash install-compose-api.sh <unRAID-apiKey>     # 首次安装直接给 key
+#   bash install-compose-api.sh                     # 首次安装交互输入 key(不回显)
+#   bash install-compose-api.sh                     # 已有 apikey 时默认保留,重复执行安全
+#   bash install-compose-api.sh -y [apiKey]         # 首次安装跳过风险确认(自动化用)
+#   bash install-compose-api.sh --reset-key         # 显式轮换 Key;会要求所有客户端同步更新
 #   bash install-compose-api.sh --local-only -y <key>
 #         只用脚本同目录的本地文件,绝不走远程下载 —— Unraid OS 升级后的恢复/重装必用
 #   bash install-compose-api.sh --local-only --preserve-key -y
@@ -36,7 +38,7 @@
 set -euo pipefail
 
 # 【续 49.4】公开版默认从 GitHub raw 拉 api.php(tag 固定版本;仓已迁 unraid-mobile-compose)
-RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/compose-api/api.php"
+RAW_URL="https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.15/compose-api/api.php"
 # Compose Manager Plus 是 Pro 宿主后端唯一的第三方 Unraid 插件依赖;CA 插件本身不是依赖。
 # 固定到已审核的上游提交(Plus 2026.11.13a),避免 main 分支变化绕过发布审核。
 # 清单内的 txz 使用上游 release 固定版本 URL,并由插件机制校验 MD5。
@@ -50,7 +52,7 @@ host_path() { printf '%s%s' "$HOST_ROOT" "$1"; }
 PLUGIN_CLI="$(host_path /usr/local/sbin/plugin)"
 COMPOSE_PLUGIN_FILE="$(host_path /var/log/plugins/compose.manager.plg)"
 # 【续 50 D4-1】下载的 api.php 做 sha256 校验(防下载源被篡改);改动 api.php 后必须同步更新此值
-EXPECTED_API_SHA256="d2e865a856ad8e7f9c5f5bb51cef333012a50ead77521a6f7826e4d865a6b8a5"
+EXPECTED_API_SHA256="fa489be15694213e0a2d21bc4595cb9c921a1c7845b84ebc48a97a789e83558d"
 EXPECTED_WORKER_SHA256="af1e7ca0db4807feebc6ba564c9630ee8d41580a6787ee8c28df90ca4849b150"
 
 PLUGIN_DIR="$(host_path /boot/config/plugins/unraid-mobile)"
@@ -104,14 +106,25 @@ ensure_compose_manager() {
 ASSUME_YES=0
 LOCAL_ONLY=0
 PRESERVE_KEY=0
+RESET_KEY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         -y|--yes) ASSUME_YES=1; shift ;;
         --local-only) LOCAL_ONLY=1; shift ;;
         --preserve-key) PRESERVE_KEY=1; shift ;;
+        --reset-key) RESET_KEY=1; shift ;;
         *) break ;;
     esac
 done
+if [ "$PRESERVE_KEY" = "1" ] && [ "$RESET_KEY" = "1" ]; then
+    die "--preserve-key 与 --reset-key 不能同时使用"
+fi
+# 已有安装的默认动作必须是升级/修复,绝不能让重跑脚本静默改变客户端认证。
+# 只有显式 --reset-key 才进入轮换流程;首次安装(apikey 缺失/为空)仍会读取新 key。
+if [ "$RESET_KEY" != "1" ] && [ "$PRESERVE_KEY" != "1" ] && [ -s "$PLUGIN_DIR/apikey" ]; then
+    PRESERVE_KEY=1
+    info "检测到现有 apikey,默认保留;如需轮换请显式使用 --reset-key"
+fi
 if [ "$PRESERVE_KEY" = "1" ] && [ $# -gt 0 ]; then
     die "--preserve-key 不接受位置参数 apiKey;它会保留现有 key 哈希"
 fi
@@ -127,6 +140,12 @@ if [ "$ASSUME_YES" != "1" ]; then
   · 卸载后端: 删除 /boot/config/plugins/unraid-mobile/ 及 go 里标记的行
   · 如不再需要本次自动安装的 Compose Manager Plus,需在 Unraid 插件管理中单独卸载
 EOF
+if [ "$RESET_KEY" = "1" ]; then
+    cat << 'EOF'
+  · 本次将重置宿主信任的 API Key;Web 与所有 App 必须立即改为同一把新 Key,
+    否则 GraphQL 可能仍可用,但 Compose/宿主后端会返回 X-Api-Key 无效
+EOF
+fi
     read -r -p "已知晓上述风险,确认继续? 输入 YES 继续,其他任意输入中止: " CONFIRM
     [ "$CONFIRM" = "YES" ] || die "用户未确认,已中止(未做任何修改)"
 fi
@@ -135,8 +154,8 @@ fi
 ensure_compose_manager
 
 # ---------- 1. 拿 apiKey(参数 > 密钥文件 > 环境变量 > 交互输入) ----------
-# --preserve-key 只用于已安装后端的升级/修复:现有哈希不可读时 fail closed,
-# 绝不退化成交互输入,避免 App/Web 后台任务挂在等待输入上。
+# 已有 apikey 默认保留;--preserve-key 供页内同步等自动化显式声明,缺失时 fail closed。
+# --reset-key 是唯一允许覆盖现有哈希的入口,绝不因普通重跑/自动化参数而隐式轮换。
 if [ "$PRESERVE_KEY" = "1" ]; then
     [ -s "$PLUGIN_DIR/apikey" ] || die "--preserve-key: 现有 apikey 缺失或为空,请先按首次安装流程执行"
     info "保留现有 apikey 哈希,不读取或重写 API key"

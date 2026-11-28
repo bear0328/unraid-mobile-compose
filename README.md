@@ -203,9 +203,9 @@ existing installer. The installer downloads the remaining agent files, verifying
 um_install_dir="$(mktemp -d /tmp/unraid-mobile-install.XXXXXX)" \
   && mkdir -p "$um_install_dir/scripts" "$um_install_dir/compose-api" \
   && curl -fsSL -o "$um_install_dir/scripts/bootstrap-host.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/scripts/bootstrap-host.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.15/scripts/bootstrap-host.sh \
   && curl -fsSL -o "$um_install_dir/compose-api/install-compose-api.sh" \
-    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.14/compose-api/install-compose-api.sh \
+    https://raw.githubusercontent.com/bear0328/unraid-mobile-compose/v1.5.15/compose-api/install-compose-api.sh \
   && bash "$um_install_dir/scripts/bootstrap-host.sh"
 ```
 
@@ -263,6 +263,16 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (158) (2026-11-28)
+
+- Host authentication failures now show API Key Mismatch with a direct Edit Server action. Connection checks separate GraphQL and host-agent authorization, while free features remain usable without a host agent
+- Coordinated with Web/Docker and compose-api v1.5.15; all 965 native XCTest cases pass
+
+### v1.5.15 (2026-11-28)
+
+- The installer preserves an existing `apikey` by default and rotates it only with explicit `--reset-key`, preventing routine upgrades from breaking Web/App host authorization
+- Native diagnostics distinguish GraphQL, host authorization, and network failures; v1.5.14 hosts can synchronize in place
 
 ### TestFlight 2.0.0 (157) (2026-11-28)
 
