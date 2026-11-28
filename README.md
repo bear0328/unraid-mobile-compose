@@ -265,6 +265,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (163) (2026-11-28)
+
+- Harden the VLCKit lifecycle: actively retire old players for background release on exit or backgrounding and avoid unused replacement instances, reducing the risk of main-thread destruction watchdogs
+- Isolate stale callbacks, resolver requests, and delayed starts; subtitle-encoding restarts use independent sessions. All 988 native XCTest cases and twelve real-MP4 destroy/recreate cycles pass. Native app only; Web, Docker, and compose-api remain at v1.5.15
+
 ### TestFlight 2.0.0 (162) (2026-11-28)
 
 - Single-movie folders now open the movie detail directly without an intermediate one-row directory; Back returns straight to the movie-library poster grid

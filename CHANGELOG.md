@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (163)] - 2026-11-28
+
+### Fixed
+
+- Address VLCKit watchdog crashes during playback exit or backgrounding by actively retiring players for background release instead of destroying them on the main thread. Stopping no longer allocates an unused replacement; the next playback creates one on demand
+- Validate both player identity and session generation for callbacks, use an independent session for subtitle-encoding restarts, and invalidate stale resolver requests immediately on retry, source changes, and track changes
+- Cancel pending first-layout playback on view teardown and startup timeout so dismissed sessions cannot restart or leave audio running
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed
+- Full native XCTest 988/988 and an iOS-device-target build pass. Twelve real-MP4 destroy/recreate cycles during playback also pass; real-device watchdog and background-exit behavior remain subject to user acceptance
+
 ## [TestFlight 2.0.0 (162)] - 2026-11-28
 
 ### Changed
