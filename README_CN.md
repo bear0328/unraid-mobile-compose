@@ -236,6 +236,12 @@ docker build -t unraid-mobile .
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
 
+### TestFlight 2.0.0(161)(2026-11-28)
+
+- 电影、剧集、季和单集新增统一详情页：背景图、大海报、简介、演职员、评分与时长，并支持播放、续播、从头播放和多版本选择
+- 展示 Emby/Jellyfin 已抓取的容器、体积、码率、分辨率、编码、帧率、HDR、音轨与字幕信息；剧集提供季选择和 16:9 单集列表，首页与网格海报同步放大
+- 仅原生 App 更新；Web、Docker 和 compose-api 保持 v1.5.15，无需重新部署或重跑安装脚本。完整 XCTest 981/981 通过
+
 ### TestFlight 2.0.0(160)(2026-11-28)
 
 - 配置备份完整纳入 Emby/Jellyfin 连接、用户、排序与 API Key，并补齐仪表盘布局、共享/文件排序和 App 锁设置

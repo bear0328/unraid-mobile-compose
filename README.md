@@ -265,6 +265,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (161) (2026-11-28)
+
+- Added unified movie, series, season, and episode details with backdrops, larger posters, overviews, cast, ratings, runtimes, Play, Resume, Start from Beginning, and media-version selection
+- Show Emby/Jellyfin container, size, bitrate, resolution, codec, frame-rate, HDR, audio, and subtitle metadata. Series include season switching and 16:9 episode artwork, while home and grid posters are larger
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no redeployment or install-script rerun needed. All 981 native XCTest cases pass
+
 ### TestFlight 2.0.0 (160) (2026-11-28)
 
 - Configuration backups now include Emby/Jellyfin connections, users, sorting, and API keys, plus dashboard layout, share/file sorting, and App Lock settings

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (161)] - 2026-11-28
+
+### Added
+
+- Added unified movie, series, season, and episode detail pages with backdrops, larger posters, ratings, content ratings, runtimes, overviews, genres, credits, cast, Play, Resume, Start from Beginning, and media-version selection
+- Use Emby/Jellyfin MediaSources and MediaStreams to show container, size, bitrate, resolution, codec, frame rate, HDR, audio, and subtitle details. Missing server metadata is identified honestly instead of inferring video quality
+- Series details include season switching and 16:9 episode artwork while preserving the selected season after playback. Home posters, list thumbnails, and grid artwork are larger and sharper
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed
+- Full native XCTest 981/981, an iOS-device-target build, and UI checks against real Emby data pass. Real-device playback and version switching remain subject to user acceptance
+
 ## [TestFlight 2.0.0 (160)] - 2026-11-28
 
 ### Fixed
