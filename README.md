@@ -225,6 +225,7 @@ the container; the Compose tab and CPU temperature (once Pro is activated) are t
 ### Later upgrades
 
 - The Docker container and host agent are separate components. The native app can update the image through **Containers → unraid-mobile → Update Image**. The `appVersion` shown in Settings belongs to the running host `api.php`; it does not prove that the container image is current.
+- When an `apikey` already exists, rerunning the installer preserves it by default and no longer prompts for a key. Only an explicit `--reset-key` rotates it; afterwards, Web and every app installation must use the same new key.
 - Starting with v1.5.11, Pro users can synchronize the host agent from **Settings → About** in either the native app or Web. The updater downloads only a pinned official release, verifies every file with SHA-256 before installation, and preserves the existing API-key hash and License receipt.
 - An independent host worker survives client disconnects and supports request-ID recovery. Managed files are backed up before installation, with rollback attempted after installation or version-verification failures. Downgrades are rejected.
 - **Initial installation still requires root in the Unraid web terminal or SSH. A v1.5.10 or older agent does not know the synchronization endpoint and must be manually updated to v1.5.11 one final time before later releases can synchronize in place.**
@@ -264,6 +265,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (159) (2026-11-28)
+
+- Consolidated the unRAID WebGUI address into Settings → Current Server → Edit Server, removing the duplicate Features & Services entry
+- Editing or clearing only the WebGUI address no longer requires another App/API connection test; changing the server URL or API Key still requires verification
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed. All 966 native XCTest cases and all 1,954 Vitest cases pass
+
 ### TestFlight 2.0.0 (158) (2026-11-28)
 
 - Host authentication failures now show API Key Mismatch with a direct Edit Server action. Connection checks separate GraphQL and host-agent authorization, while free features remain usable without a host agent
@@ -300,23 +307,6 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 - Library cards now use 16:9 landscape artwork, fixing image overflow and card overlap. All 948 native XCTest cases pass
 
-### TestFlight 2.0.0 (152) (2026-11-28)
-
-- Library now uses horizontal poster cards matching Continue Watching style (portrait 2:3 images, horizontal scroll, 116pt width)
-- Fixed autoindex page parsing errors caused by truncated UTF-8 characters
-- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
-
-### TestFlight 2.0.0 (151) (2026-11-28)
-
-- Library temporarily switched to a vertical list (restored to horizontal poster row in 152)
-- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
-
-### TestFlight 2.0.0 (150) (2026-11-28)
-
-- First attempt at poster card layout for library; width was too large causing overlap (fixed to 116pt in 152)
-- Updated TestFlight app description with full Free/Pro feature breakdown
-- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 948 native XCTest cases pass
-
 ### v1.5.13 (2026-11-27)
 
 - Unified the confirmed orange brand artwork across native, Web/PWA, Capacitor splash screens, and the public deployment repository, with platform-native rounded presentation
@@ -327,21 +317,6 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 - Continue Watching collapses episodes into one card per series, ordered by recent playback. Cards show the series title and poster with episode details underneath, while tapping resumes the latest episode directly
 - Updated the app icon to the confirmed orange design with native iOS continuous rounding. All 948 native XCTest cases pass
-
-### TestFlight 2.0.0 (148) (2026-11-27)
-
-- Added local Continue Watching and Latest snapshots to the Player home. Opening the tab now restores libraries, home sections, and artwork before refreshing in the background. Offline or failed refreshes retain previous content; caches are isolated per server and user and exclude video files, API keys, and media paths
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed. All 946 native XCTest cases pass
-
-### TestFlight 2.0.0 (147) (2026-11-27)
-
-- Simplified Dashboard refresh to one visible toolbar button while retaining pull-to-refresh. Removed the duplicate server-card button and constantly changing timestamp; the last successful update time appears only when cached data is shown after a refresh failure
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed. All 944 native XCTest cases pass
-
-### TestFlight 2.0.0 (146) (2026-11-27)
-
-- Fixed a `0x8BADF00D` watchdog termination caused by VLC destruction blocking the main thread during backgrounding or process termination. Retired players now release on a dedicated serial background queue without changing background-audio behavior
-- Native app only; Web, Docker, and compose-api remain at v1.5.12, with no install-script rerun needed. All 944 native XCTest cases pass; the original real-iPhone scenario still requires validation with build 146
 
 ### v1.5.12 (2026-11-27)
 
@@ -354,22 +329,6 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 - Reorganized Settings into seven groups with a unified Pro entry, consistent credential save/validate/clear behavior, and a dedicated host-agent subpage with backend status
 - Added validated-snapshot connection tests, Keychain write/delete read-back verification with failure recovery, complete restore preflight, transactional commit/rollback, strict version/ID/URL rejection, safe cache paths, and automatic backup of polling/appearance preferences
 - Full native XCTest 943/943, the latest targeted suite 59/59, and Vitest 1951/1951 pass; simulator light/dark and large-text checks pass. Real-device interactions remain subject to user acceptance
-
-### TestFlight 2.0.0 (144) (2026-11-27)
-
-- Newly Added now shows one series card per show instead of listing every episode. Shows are ordered by their newest episode's date added, tapping opens the series, and movies remain individual entries
-- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Orphan episodes without series identity no longer occupy standalone cards
-
-### TestFlight 2.0.0 (143) (2026-11-27)
-
-- Newly Added episodes no longer prioritize video-frame thumbnails. They now prefer series posters with season-poster fallback, while movies and series retain their own artwork
-- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Continue Watching still prefers season posters and falls back to series posters
-
-### TestFlight 2.0.0 (142) (2026-11-27)
-
-- Reorganized the native player home into Libraries, Continue Watching, and Newly Added, all horizontally scrollable. Libraries now show entry cards only, with library contents available after tapping through
-- Newly Added merges and deduplicates items across libraries by date added instead of creating a row per library. Continue Watching episodes now prefer season or series posters over episode video frames
-- Native app only; Web, Docker, and compose-api remain at v1.5.11, with no install-script rerun needed. Real-device layout and artwork-fallback validation against actual media servers remains required
 
 ### v1.5.11 (2026-11-27)
 
@@ -399,29 +358,52 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 ### v1.5.10 (2026-11-27)
 
 - Docker installation states now rely only on actual running or stopped containers. Leftover user templates and community templates no longer cause false positives, while plugin detection is unchanged
-- The native player also improves weak-network progress reporting, bounded remote-media probes, and cross-origin credential handling, while removing the duplicate container-overview store entry
 - Coordinated with TestFlight 2.0.0 (138). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+### TestFlight 2.0.0 (138) (2026-11-27)
+
+- Playback reporting adds bounded Started retries, latest-only Progress coalescing, and prioritized Stopped flushing. Remote probes read only the first byte, cross-origin redirects drop original credentials, and reports use real seek capability
+- Removed the duplicate App Store entry from the container overview while retaining it in Settings. Requires the coordinated v1.5.10 host agent; **re-run the host install script after upgrading**
 
 ### v1.5.9 (2026-11-23)
 
-- Native one-click updates now cover standalone Docker, compose.manager stacks, and external Compose projects, with a categorized confirmation and one update per Compose project using its original configuration
-- Adds secure external Compose discovery, project-level asynchronous jobs, request-ID recovery, progress logs, and immediate update-badge refresh. External Compose never falls back to standalone container updates
+- Native one-click updates now cover standalone Docker, compose.manager stacks, and external Compose projects. A categorized confirmation lists every pending container/project, and each Compose project is pulled and recreated only once with its original configuration
+- External Compose jobs add project locking, live identity/spec validation, request-ID recovery, safe active-job attachment, complete logs, and immediate update-badge refresh; they never fall back to standalone updates
 - Coordinated with TestFlight 2.0.0 (137). **Re-run the host install script after upgrading** to deploy the new compose-api endpoints
+
+### TestFlight 2.0.0 (137) (2026-11-23)
+
+- “Update All” and selected-container updates include every updatable Docker container, with separate standalone, compose.manager, and external Compose lists plus per-project progress and results
+- Container details update the owning external Compose project safely. Reattachment works during anchor-container recreation and preserves real terminal or indeterminate outcomes
+- Requires the coordinated v1.5.9 host agent; **re-run the host install script after upgrading**
 
 ### v1.5.8 (2026-11-23)
 
 - Support both Unraid 7.4 `flashGUID` and legacy `flashGuid`, fixing Pro identity lookup failures that blocked “Update All” and other Pro actions before execution
 - compose-api backend fix only; device-binding hashes and license rules are unchanged, and native app features are unaffected. **Re-run the host install script after upgrading**
 
-### v1.5.7 (2026-11-23)
+### TestFlight 2.0.0 (136) (2026-11-23)
 
-- GPU metrics use a shared four-second cache instead of launching external samplers on every one-second poll. CPU power and memory remain live, and the Web container summary removes its duplicated count
-- Coordinated with TestFlight 2.0.0 (135). **Re-run the host install script after upgrading** to deploy the updated compose-api
+- CPU, GPU, memory, network, disk, and Parity cards collapse into single-line summaries with independently persisted states. All cards start expanded and can be toggled from the title row or long-press menu
+- Collapsing does not change polling, fetch disk details, or spin up disks. Dashboard card source files are also organized by type without changing the existing interface or behavior
+- Native app only; Web, Docker, and compose-api are unchanged, with no install-script rerun needed
 
 ### TestFlight 2.0.0 (135) (2026-11-23)
 
 - The dashboard adds pull-to-refresh without fetching disk details or spinning up sleeping disks; an unloaded disk card now offers guidance and a “Fetch Disk Details” action
 - Coordinated with Web/Docker v1.5.7. **Re-run the host install script after upgrading** to enable the GPU sampling optimization
+
+### v1.5.7 (2026-11-23)
+
+- GPU metrics use a shared four-second cache instead of launching external samplers on every one-second poll. CPU power and memory remain live, and the Web container summary removes its duplicated count
+- Coordinated with TestFlight 2.0.0 (135). **Re-run the host install script after upgrading** to deploy the updated compose-api
+
+### TestFlight 2.0.0 (134) (2026-11-23)
+
+- Container updates, lifecycle actions, parameter editing, and batch jobs are mutually exclusive. Each batch retains its original server and configuration, stopping remaining mutations after a configuration change to prevent cross-configuration writes
+- Compose and standalone containers report update results incrementally. Lost responses, timeouts, and undispatched items use a neutral “outcome pending” state; special stack names are correctly escaped for details, logs, and YAML saves
+- Containers, Compose, and VMs share neutral cards, tappable summary filters, resilient long-text and large-text layouts, and row-level VoiceOver activation. VM state normalization and log-session rebuilds now respect configuration changes
+- Native app only; Web, Docker, and compose-api are unchanged, with no install-script rerun needed
 
 ### v1.5.6 (2026-11-23)
 

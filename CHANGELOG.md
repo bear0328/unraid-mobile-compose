@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (159)] - 2026-11-28
+
+### Changed
+
+- Removed the duplicate Features & Services WebGUI-address editor. The address is now maintained only under Current Server → Edit Server
+- Editing or clearing only the WebGUI address no longer requires another App/API connection test. Server URL or API Key changes still require verification
+- WebGUI-only saves preserve the existing no-connection-rebuild update path, avoiding unnecessary data-request refreshes
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed
+- Full native XCTest 966/966 and Vitest 1954/1954 pass, together with lint and an isolated-directory production build. Real-device settings editing remains subject to user acceptance
+
 ## [1.5.15] - 2026-11-28
 
 ### Fixed
