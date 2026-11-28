@@ -264,6 +264,12 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (156) (2026-11-28)
+
+- Unified native player chrome and loading/error states, with a compact media summary, clearer primary controls, double-tap ±15-second seek, startup timeout protection, and automatic resume with a Start from Beginning action
+- Moved subtitle/audio settings into a scrollable panel that works during playback. Retries preserve current-session progress, long-press previews restore the previous rate, landscape follows the actual window, and WebDAV/STRM/Emby/Jellyfin share one source loader
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 960 native XCTest cases pass
+
 ### TestFlight 2.0.0 (155) (2026-11-28)
 
 - Renamed Shares to Storage and added comments, complete capacity details, and usage bars to share and disk rows, with matching category and global-search wording
