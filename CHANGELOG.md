@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (162)] - 2026-11-28
+
+### Changed
+
+- Collapse single-movie folders so tapping opens the movie detail directly instead of an intermediate one-row directory; Back returns straight to the movie-library poster grid
+- Flatten only when the server reports exactly one item and that item is a Movie. Multi-item and special folders, series directories, and library roots remain unchanged
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed
+- Full native XCTest 983/983 and an iOS-device-target build pass. Real-device navigation remains subject to user acceptance
+
 ## [TestFlight 2.0.0 (161)] - 2026-11-28
 
 ### Added

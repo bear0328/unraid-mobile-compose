@@ -265,6 +265,11 @@ docker build -t unraid-mobile .
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
 
+### TestFlight 2.0.0 (162) (2026-11-28)
+
+- Single-movie folders now open the movie detail directly without an intermediate one-row directory; Back returns straight to the movie-library poster grid
+- Multi-item and special folders, series directories, and library roots are unchanged. Native app only; Web, Docker, and compose-api remain at v1.5.15. All 983 native XCTest cases pass
+
 ### TestFlight 2.0.0 (161) (2026-11-28)
 
 - Added unified movie, series, season, and episode details with backdrops, larger posters, overviews, cast, ratings, runtimes, Play, Resume, Start from Beginning, and media-version selection
