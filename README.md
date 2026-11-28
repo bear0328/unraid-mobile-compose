@@ -28,7 +28,7 @@ detects the missing schema fields and degrades gracefully).
 |------|------|
 | Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (static libvirt configuration, per-VM live CPU/memory/disk/network metrics, and QEMU/libvirt logs) |
 | Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹, **plugin management** (check/install/update/remove, native app)¹ |
-| Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
+| Storage capacity &amp; usage bars, Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
 | Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, alert notifications (Webhook), disk cleanup |
 
 ¹ Requires the host agent (compose-api) — a small component installed on the unRAID host as described
@@ -139,7 +139,7 @@ enabled per mount:
 |------|------------|------|
 | Config persistence | `-v .../config:/usr/share/nginx/html/config` | Stores serverUrl only; recommended |
 | File manager | `-v /mnt/user:/mnt/user` + `-v /mnt/cache:/mnt/cache` + WebDAV password file | Password entered in Settings, must match nginx `.davpasswd` |
-| Read-only disk/pool browsing (Shares → Disks tab) | `-v /mnt:/mnt:ro` | Read-only; recreate the container after adding disks/pools |
+| Read-only disk/pool browsing (Storage → Disks) | `-v /mnt:/mnt:ro` | Read-only; recreate the container after adding disks/pools |
 | Host system logs | `-v /var/log:/hostlog:ro` + log password file | Same idea, `.logpasswd` |
 | Compose stacks / CPU temperature (Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + host agent | See next section |
 
@@ -263,6 +263,16 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (155) (2026-11-28)
+
+- Renamed Shares to Storage and added comments, complete capacity details, and usage bars to share and disk rows, with matching category and global-search wording
+- Added first-load skeletons, stale-data warnings with retry, and partial pool-failure status. Legacy snapshots remain compatible; shares and pools load concurrently without added polling
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed. All 952 native XCTest cases pass
+
+### TestFlight 2.0.0 (154) (2026-11-28)
+
+- Library cards now use 16:9 landscape artwork, fixing image overflow and card overlap. All 948 native XCTest cases pass
 
 ### TestFlight 2.0.0 (152) (2026-11-28)
 

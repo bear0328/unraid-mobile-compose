@@ -27,7 +27,7 @@ unRAID 7.3+ / unraid-api ≥ 4.20,老版本会自动降级,仅缺少这两项,�
 |------|------|
 | 仪表盘全部监控:CPU / 内存 / 网络 / 磁盘 / 阵列 / parity 校验进度 / 历史曲线 / 收藏、unRAID 告警徽章 | 容器 / VM 启停 / 重启 / 暂停 / 恢复操作、**VM 增强详情**¹(CPU/内存/磁盘/网络/直通/快照,读 libvirt XML) |
 | 容器 / VM 列表、容器详情(端口/挂载/网络/磁盘占用)、容器日志、VM 基础详情 | **Compose 栈管理**(列表/日志/up/down/pull/rebuild/yaml 编辑)¹、**插件管理**(检查/安装/更新/卸载,原生端)¹ |
-| Shares 文件浏览 / 下载 / 图片预览、磁盘/缓存池只读浏览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
+| 存储页容量与用量条、Shares 文件浏览 / 下载 / 图片预览、磁盘/缓存池只读浏览、宿主系统日志(syslog) | **CPU 温度**¹(直读 /sys/class/hwmon,不唤盘)、Shares 写操作(上传/新建/删除/重命名/文本编辑) |
 | 全局搜索、命令面板、配置备份/导入、单服务器、深色主题、PWA | **容器一键更新**(单个/批量,webGui 同款)、**UPS 监控**(电量/续航/负载)、容器批量操作、告警通知(Webhook)、磁盘清理 |
 
 ¹ 依赖宿主后端(compose-api)——需按下方「Pro 宿主后端」一节在 unRAID 宿主安装小组件,
@@ -128,7 +128,7 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-unraid-mobile.xml
 |------|------------|------|
 | 配置持久化 | `-v .../config:/usr/share/nginx/html/config` | 只存 serverUrl,建议加 |
 | 文件管理 | `-v /mnt/user:/mnt/user` + `-v /mnt/cache:/mnt/cache` + WebDAV 密码文件 | 密码在设置页输入,与 nginx `.davpasswd` 一致 |
-| 磁盘/缓存池只读浏览(共享页 → 硬盘页签) | `-v /mnt:/mnt:ro` | 只读;新加盘/池需 recreate 容器才可见 |
+| 磁盘/缓存池只读浏览(存储 → 硬盘) | `-v /mnt:/mnt:ro` | 只读;新加盘/池需 recreate 容器才可见 |
 | 宿主系统日志 | `-v /var/log:/hostlog:ro` + 日志密码文件 | 同上,`.logpasswd` |
 | Compose 栈管理 / CPU 温度(Pro) | `-v /var/run/php-fpm.sock:/hostrun/php-fpm.sock` + 宿主后端 | 见下节 |
 
@@ -234,6 +234,16 @@ docker build -t unraid-mobile .
 ## 更新日志
 
 完整历史见 [CHANGELOG_CN.md](CHANGELOG_CN.md)。
+
+### TestFlight 2.0.0(155)(2026-11-28)
+
+- 「共享」页签统一改名为「存储」，共享与硬盘列表新增备注、完整容量信息和用量条，分类与全局搜索文案同步调整
+- 增加首载骨架屏、旧数据刷新失败警告与重试、缓存池部分失败提示；旧快照保持兼容，共享与缓存池并行加载且不新增轮询
+- 仅原生 App 更新，Web、Docker 和 compose-api 仍为 v1.5.13，无需重跑安装脚本；完整 XCTest 952/952 通过
+
+### TestFlight 2.0.0(154)(2026-11-28)
+
+- 媒体库卡片图片统一为 16:9 横向布局，修正图片溢出与卡片遮挡；完整 XCTest 948/948 通过
 
 ### TestFlight 2.0.0(152)(2026-11-28)
 

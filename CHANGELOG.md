@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (155)] - 2026-11-28
+
+### Changed
+
+- Renamed the Shares tab and page to Storage, clarified the Shares / Disks categories, and aligned global-search wording
+- Reworked share and disk rows with names, comments, used / total / free capacity, and usage bars. Added first-load skeletons, non-blocking stale-data warnings with retry and last-updated time, and partial pool-failure status
+- Added a dedicated share model that preserves comments and capacity fields while decoding legacy snapshots. Shares and pools now load concurrently without introducing polling
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.13, with no install-script rerun needed
+- All 952 native XCTest cases and the generic iOS unsigned build pass. Light, dark large-text, and small-screen layouts were checked; real-device online refresh and interactions still require validation
+
+## [TestFlight 2.0.0 (154)] - 2026-11-28
+
+### Changed
+
+- Library cards now use 16:9 landscape artwork, showing banners without cropping and fixing image overflow and card overlap
+
+### Notes
+
+- Native app only; Web, Docker, and compose-api remain at v1.5.13. All 948 native XCTest cases pass
+
 ## [1.5.13] - 2026-11-27
 
 ### Changed
