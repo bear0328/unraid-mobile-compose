@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [TestFlight 2.0.0 (160)] - 2026-11-28
+
+### Fixed
+
+- Configuration backups now include Emby/Jellyfin servers, user selections, per-directory sorting, and per-server API keys instead of only polling and appearance preferences
+- Added dashboard layout, share/file sorting, and App Lock settings. Future UserDefaults configuration and Keychain credentials are included by default without another allowlist entry
+- Configuration changes automatically trigger a debounced upload, and restores immediately refresh media configuration and player state
+- Search history, playback progress, and the License binding cache remain excluded. Backups contain secrets and use WebDAV authentication, not encryption
+
+### Notes
+
+- Native app only; Web only adds compatible backup-field types with no runtime behavior change. Web, Docker, and compose-api remain at v1.5.15, with no server deployment or install-script rerun needed
+- Full native XCTest 973/973 and Vitest 1954/1954 pass, together with lint and a production build. Real-device full backup and restore remain subject to user acceptance
+
 ## [TestFlight 2.0.0 (159)] - 2026-11-28
 
 ### Changed

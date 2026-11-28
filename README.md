@@ -29,7 +29,7 @@ detects the missing schema fields and degrades gracefully).
 | Full dashboard monitoring: CPU / memory / network / disks / array / parity-check progress / history charts / favorites, unRAID alert badge | Container & VM start/stop / restart / pause / resume operations, **VM enhanced details**¹ (static libvirt configuration, per-VM live CPU/memory/disk/network metrics, and QEMU/libvirt logs) |
 | Container & VM lists, container details (ports/mounts/network/disk usage), container logs, VM basic details | **Compose stack management** (list/logs/up/down/pull/rebuild/yaml editing)¹, **plugin management** (check/install/update/remove, native app)¹ |
 | Storage capacity &amp; usage bars, Shares file browsing / download / image preview, read-only disk &amp; pool browsing, host system logs (syslog) | **CPU temperature**¹ (reads /sys/class/hwmon directly, never spins up disks), Shares write operations (upload/mkdir/delete/rename/text editing) |
-| Global search, command palette, config backup/import, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, alert notifications (Webhook), disk cleanup |
+| Global search, command palette, full configuration backup including media servers and credentials, single server, dark theme, PWA | **One-click container updates** (single/batch, same as webGui), **UPS monitoring** (charge/runtime/load), container batch operations, alert notifications (Webhook), disk cleanup |
 
 ¹ Requires the host agent (compose-api) — a small component installed on the unRAID host as described
 in "Pro host agent" below. **Installation modifies the boot script `/boot/config/go`; read the risk
@@ -264,6 +264,12 @@ docker build -t unraid-mobile .
 ## Changelog
 
 Full history in [CHANGELOG.md](CHANGELOG.md).
+
+### TestFlight 2.0.0 (160) (2026-11-28)
+
+- Configuration backups now include Emby/Jellyfin connections, users, sorting, and API keys, plus dashboard layout, share/file sorting, and App Lock settings
+- Future configuration and Keychain credentials are included by default with automatic uploads after changes; search history, playback progress, and caches remain excluded
+- Native app only; Web, Docker, and compose-api remain at v1.5.15, with no redeployment or install-script rerun needed. All 973 native XCTest cases and all 1,954 Vitest cases pass
 
 ### TestFlight 2.0.0 (159) (2026-11-28)
 
